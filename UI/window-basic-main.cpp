@@ -1082,7 +1082,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 				".Default"));
 	config_set_default_uint  (basicConfig, "Audio", "SampleRate", 44100);
 	config_set_default_string(basicConfig, "Audio", "ChannelSetup",
-			"Stereo");
+			"7.1");
 
 	return true;
 }
@@ -2786,8 +2786,8 @@ bool OBSBasic::ResetAudio()
 	const char *channelSetupStr = config_get_string(basicConfig,
 			"Audio", "ChannelSetup");
 
-	if (strcmp(channelSetupStr, "Mono") == 0)
-		ai.speakers = SPEAKERS_MONO;
+	if (strcmp(channelSetupStr, "7.1") == 0)
+		ai.speakers = SPEAKERS_7POINT1;
 	else
 		ai.speakers = SPEAKERS_STEREO;
 

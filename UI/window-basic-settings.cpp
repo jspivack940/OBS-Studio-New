@@ -2006,7 +2006,7 @@ void OBSBasicSettings::LoadAudioSettings()
 	if (sampleRateIdx != -1)
 		ui->sampleRate->setCurrentIndex(sampleRateIdx);
 
-	if (strcmp(speakers, "Mono") == 0)
+	if (strcmp(speakers, "7.1") == 0)
 		ui->channelSetup->setCurrentIndex(0);
 	else
 		ui->channelSetup->setCurrentIndex(1);
@@ -2868,7 +2868,7 @@ void OBSBasicSettings::SaveAudioSettings()
 	QString sampleRateStr  = ui->sampleRate->currentText();
 	int channelSetupIdx    = ui->channelSetup->currentIndex();
 
-	const char *channelSetup = (channelSetupIdx == 0) ? "Mono" : "Stereo";
+	const char *channelSetup = (channelSetupIdx == 0) ? "7.1" : "Stereo";
 
 	int sampleRate = 44100;
 	if (sampleRateStr == "48khz")

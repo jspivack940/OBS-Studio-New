@@ -18,7 +18,7 @@ protected:
 	uint64_t                nextAudioTS = 0;
 	uint64_t                lastVideoTS = 0;
 	AudioRepacker           *audioRepacker = nullptr;
-	speaker_layout          channelFormat = SPEAKERS_STEREO;
+	speaker_layout          channelFormat = SPEAKERS_7POINT1;
 
 	void FinalizeStream();
 

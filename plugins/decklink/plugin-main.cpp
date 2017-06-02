@@ -76,7 +76,7 @@ static void decklink_get_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_bool(settings, BUFFERING, true);
 	obs_data_set_default_int(settings, PIXEL_FORMAT, bmdFormat8BitYUV);
-	obs_data_set_default_int(settings, CHANNEL_FORMAT, SPEAKERS_STEREO);
+	obs_data_set_default_int(settings, CHANNEL_FORMAT, SPEAKERS_7POINT1);
 }
 
 static const char *decklink_get_name(void*)
@@ -118,6 +118,8 @@ static bool decklink_device_changed(obs_properties_t *props,
 			SPEAKERS_UNKNOWN);
 	obs_property_list_add_int(channelList, TEXT_CHANNEL_FORMAT_2_0CH,
 			SPEAKERS_STEREO);
+	obs_property_list_add_int(channelList, TEXT_CHANNEL_FORMAT_7_1CH,
+		SPEAKERS_7POINT1);
 
 	ComPtr<DeckLinkDevice> device;
 	device.Set(deviceEnum->FindByHash(hash));
@@ -188,6 +190,8 @@ static obs_properties_t *decklink_get_properties(void *data)
 			SPEAKERS_UNKNOWN);
 	obs_property_list_add_int(list, TEXT_CHANNEL_FORMAT_2_0CH,
 			SPEAKERS_STEREO);
+	obs_property_list_add_int(list, TEXT_CHANNEL_FORMAT_7_1CH,
+		SPEAKERS_7POINT1);
 
 	obs_properties_add_bool(props, BUFFERING, TEXT_BUFFERING);
 

@@ -10,6 +10,7 @@
 		obs_source_get_name(this->decklink->GetSource()), ##__VA_ARGS__)
 
 #define ISSTEREO(flag) ((flag) == SPEAKERS_STEREO)
+#define IS7POINT1(flag) ((flag) == SPEAKERS_7POINT1)
 
 static inline enum video_format ConvertPixelFormat(BMDPixelFormat format)
 {
@@ -45,7 +46,9 @@ static inline audio_repack_mode_t ConvertRepackFormat(speaker_layout format)
 		return repack_mode_8to6ch_swap23;
 
 	case SPEAKERS_7POINT1:
-		return repack_mode_8ch_swap23;
+		//return repack_mode_8ch_swap23;
+		assert(false && "No repack requested");
+		return (audio_repack_mode_t)-1;
 
 	default:
 		assert(false && "No repack requested");
@@ -58,7 +61,7 @@ DeckLinkDeviceInstance::DeckLinkDeviceInstance(DeckLink *decklink_,
 	currentFrame(), currentPacket(), decklink(decklink_), device(device_)
 {
 	currentPacket.samples_per_sec = 48000;
-	currentPacket.speakers        = SPEAKERS_STEREO;
+	currentPacket.speakers        = SPEAKERS_7POINT1;
 	currentPacket.format          = AUDIO_FORMAT_16BIT;
 }
 
@@ -84,12 +87,17 @@ void DeckLinkDeviceInstance::HandleAudioPacket(
 	currentPacket.timestamp   = timestamp;
 
 	if (!ISSTEREO(channelFormat)) {
-		if (audioRepacker->repack((uint8_t *)bytes, frameCount) < 0) {
-			LOG(LOG_ERROR, "Failed to convert audio packet data");
-			return;
+		if (!IS7POINT1(channelFormat)) {
+			if (audioRepacker->repack((uint8_t *)bytes, frameCount) < 0) {
+				LOG(LOG_ERROR, "Failed to convert audio packet data");
+				return;
+			}
+			currentPacket.data[0] = (*audioRepacker)->packet_buffer;
 		}
-
-		currentPacket.data[0]   = (*audioRepacker)->packet_buffer;
+		else {
+			currentPacket.data[0] = (uint8_t *)bytes;
+		}
+		
 	} else {
 		currentPacket.data[0]   = (uint8_t *)bytes;
 	}
@@ -175,10 +183,10 @@ bool DeckLinkDeviceInstance::StartCapture(DeckLinkDeviceMode *mode_)
 		if (audioResult != S_OK)
 			LOG(LOG_WARNING, "Failed to enable audio input; continuing...");
 
-		if (!ISSTEREO(channelFormat)) {
-			const audio_repack_mode_t repack_mode = ConvertRepackFormat(channelFormat);
-			audioRepacker = new AudioRepacker(repack_mode);
-		}
+		//if (!ISSTEREO(channelFormat)) {
+		//	const audio_repack_mode_t repack_mode = ConvertRepackFormat(channelFormat);
+		//	audioRepacker = new AudioRepacker(repack_mode);
+		//}
 	}
 
 	if (input->SetCallback(this) != S_OK) {
