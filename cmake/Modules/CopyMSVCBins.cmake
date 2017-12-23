@@ -106,6 +106,12 @@ file(GLOB LIBFDK_BIN_FILES
 	"${Libfdk_INCLUDE_DIR}/bin/libfdk*-*.dll"
 	"${Libfdk_INCLUDE_DIR}/bin${_bin_suffix}/libfdk*-*.dll")
 
+file(GLOB BASSASIO_BIN_FILES
+	"${Libfdk_INCLUDE_DIR}/../bin${_bin_suffix}/bassasio*-*.dll"
+	"${Libfdk_INCLUDE_DIR}/../bin/bassasio.dll"
+	"${Libfdk_INCLUDE_DIR}/bin/bassasio.dll"
+	"${Libfdk_INCLUDE_DIR}/bin${_bin_suffix}/bassasio*-*.dll")
+	
 file(GLOB SSL_BIN_FILES
 	"${SSL_INCLUDE_DIR}/../bin${_bin_suffix}/ssleay32*.dll"
 	"${SSL_INCLUDE_DIR}/../bin${_bin_suffix}/libeay32*.dll"
@@ -201,6 +207,7 @@ set(ALL_BASE_BIN_FILES
 	${SSL_BIN_FILES}
 	${ZLIB_BIN_FILES}
 	${LIBFDK_BIN_FILES}
+	${}
 	${FREETYPE_BIN_FILES}
 	${QT_ICU_BIN_FILES})
 
@@ -248,6 +255,7 @@ endforeach()
 message(STATUS "FFmpeg files: ${FFMPEG_BIN_FILES}")
 message(STATUS "x264 files: ${X264_BIN_FILES}")
 message(STATUS "Libfdk files: ${LIBFDK_BIN_FILES}")
+message(STATUS "Rtaudio file with asio support: ${RTAUDIO_BIN_FILES}")
 message(STATUS "Freetype files: ${FREETYPE_BIN_FILES}")
 message(STATUS "curl files: ${CURL_BIN_FILES}")
 message(STATUS "lua files: ${LUA_BIN_FILES}")
