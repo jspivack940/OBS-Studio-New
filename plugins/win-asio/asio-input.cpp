@@ -296,12 +296,12 @@ void asio_init(struct asio_data *data)
 		blog(LOG_INFO,"\nNo audio devices found!\n");
 	}
 	RtAudio::StreamParameters parameters;
-	parameters.deviceId = data->device_index;
-	parameters.nChannels = recorded_channels; 
-	parameters.firstChannel = data->FirstChannel; //first channel captured
-	unsigned int sampleRate = data->SampleRate;
-	unsigned int bufferFrames = data->BufferSize; // default is 256 frames
-	RtAudioFormat audioFormat = obs_to_rtasio_audio_format(data->SampleSize);
+	parameters.deviceId = data->device_index? data->device_index:0;
+	parameters.nChannels = recorded_channels ? recorded_channels : 1;
+	parameters.firstChannel = data->FirstChannel? data->FirstChannel:0; //first channel captured
+	unsigned int sampleRate = data->SampleRate? data->SampleRate:48000;
+	unsigned int bufferFrames = data->BufferSize? data->BufferSize:256; // default is 256 frames
+	RtAudioFormat audioFormat = obs_to_rtasio_audio_format(data->SampleSize? data->SampleSize: AUDIO_FORMAT_32BIT);
 
 	try {
 		adc.openStream(&parameters, NULL, audioFormat, sampleRate,
@@ -340,8 +340,8 @@ void asio_init(struct asio_data *data)
 	}
 
 cleanup:
-	if (adc.isStreamOpen())
-		adc.closeStream();
+	//if (adc.isStreamOpen())
+	//	adc.closeStream();
 	asio_deinit(data);
 }
 
