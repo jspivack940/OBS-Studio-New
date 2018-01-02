@@ -68,7 +68,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
 
 struct asio_data {
 	obs_source_t *source;
-	RtAudio *adc;
+	RtAudio adc;
 	/*asio device and info */
 	char *device;
 	uint8_t device_index;
@@ -290,8 +290,9 @@ void asio_init(struct asio_data *data)
 	// number of channels which will be captured
 	int recorded_channels = data->LastChannel - data->FirstChannel + 1;
 
-	RtAudio *adc = data->adc;
-	if (adc->getDeviceCount() < 1) {
+	RtAudio adc = data->adc;
+	uint8_t deviceNumber = get_device_number();
+	if (deviceNumber < 1) {
 		blog(LOG_INFO,"\nNo audio devices found!\n");
 	}
 	RtAudio::StreamParameters parameters;
@@ -303,9 +304,9 @@ void asio_init(struct asio_data *data)
 	RtAudioFormat audioFormat = obs_to_rtasio_audio_format(data->SampleSize);
 
 	try {
-		adc->openStream(&parameters, NULL, audioFormat, sampleRate,
+		adc.openStream(&parameters, NULL, audioFormat, sampleRate,
 				&bufferFrames, &create_asio_buffer, (void *)&data);
-		adc->startStream();
+		adc.startStream();
 	}
 	catch (RtAudioError& e) {
 		e.printMessage();
@@ -334,13 +335,13 @@ void asio_init(struct asio_data *data)
 		data->first_ts = out.timestamp;
 	}
 
-	if (out.timestamp > data->first_ts && adc->isStreamRunning()) {
+	if (out.timestamp > data->first_ts && adc.isStreamRunning()) {
 		obs_source_output_audio(data->source, &out);
 	}
 
 cleanup:
-	if (adc->isStreamOpen())
-		adc->closeStream();
+	if (adc.isStreamOpen())
+		adc.closeStream();
 	asio_deinit(data);
 }
 
@@ -360,7 +361,7 @@ static void * asio_create(obs_data_t *settings, obs_source_t *source)
 
 void asio_deinit(struct asio_data *data)
 {	
-	RtAudio adc = *data->adc;
+	RtAudio adc = data->adc;
 	try {
 		adc.stopStream();
 	}
