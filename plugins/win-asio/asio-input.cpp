@@ -212,11 +212,9 @@ void fill_out_devices(obs_property_t *list) {
 }
 
 //creates list of input channels
-void fill_out_channels(obs_property_t *list) {
-	obs_data_t *settings;
+static bool fill_out_channels(obs_properties_t *props, obs_property_t *list, obs_data_t *settings) {
 	const char* device = obs_data_get_string(settings, "device_id");
 	RtAudio::DeviceInfo info;
-	const char* names;
 	uint8_t input_channels;
 
 	//get the device info
@@ -225,17 +223,17 @@ void fill_out_channels(obs_property_t *list) {
 
 	for (uint8_t i = 0; i < input_channels; i++) {
 		std::string channel_numbering(device);
-		char** names;
-		char *number;
-		*number = (char)i;
+		char** names = new char*[32];
+		char number = i;
 		channel_numbering.append(" ");
-		channel_numbering.append(number);
+		channel_numbering.append(&number);
 		std::string test = info.name;
 		char* cstr = new char[test.length() + 1];
 		strcpy(cstr, test.c_str());
 		names[i] = cstr;
 		obs_property_list_add_int(list, names[i], i);
 	}
+	return true;
 }
 
 //static bool asio_device_changed(obs_properties_t *props,
@@ -375,8 +373,11 @@ void asio_deinit(struct asio_data *data)
 	catch (RtAudioError& e) {
 		e.printMessage();
 	}
-	if (data->buffer)
-		bfree(data->buffer), data->buffer = NULL;
+	if (data->buffer) {
+		bfree(data->buffer);
+		data->buffer = NULL;
+	}
+
 	if (adc.isStreamOpen()) {
 		adc.closeStream();
 	}
@@ -479,13 +480,13 @@ obs_properties_t * asio_get_properties(void *unused)
 	first_channel = obs_properties_add_list(props, "first channel",
 			TEXT_FIRST_CHANNEL, OBS_COMBO_TYPE_LIST,
 			OBS_COMBO_FORMAT_INT);
-	fill_out_channels(first_channel);
-//	obs_property_set_modified_callback(first_channel, asio_first_channel_changed);
+//	fill_out_channels(first_channel);
+	obs_property_set_modified_callback(first_channel, fill_out_channels);
 
 	last_channel = obs_properties_add_list(props, "last channel",
 			TEXT_LAST_CHANNEL, OBS_COMBO_TYPE_LIST,
 			OBS_COMBO_FORMAT_INT);
-	fill_out_channels(last_channel);
+	obs_property_set_modified_callback(last_channel, fill_out_channels);
 
 	rate = obs_properties_add_list(props, "sample rate",
 			obs_module_text("SampleRate"), OBS_COMBO_TYPE_LIST,
