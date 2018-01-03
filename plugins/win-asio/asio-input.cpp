@@ -154,11 +154,11 @@ RtAudio::DeviceInfo get_device_info(const char *device) {
 }
 
 //get the number of asio devices (up to 256)
-uint8_t get_device_number() {
-	RtAudio audio;
-	uint8_t numOfDevices = audio.getDeviceCount();
-	return numOfDevices;
-}
+//uint8_t get_device_number() {
+//	RtAudio audio;
+//	uint8_t numOfDevices = audio.getDeviceCount();
+//	return numOfDevices;
+//}
 
 // get the device index
 uint8_t get_device_index(const char *device) {
@@ -225,10 +225,7 @@ static bool fill_out_channels(obs_properties_t *props, obs_property_t *list, obs
 	for (uint8_t i = 0; i < input_channels; i++) {
 		std::string channel_numbering(device);
 		char** names = new char*[32];
-		char number = i;
-		channel_numbering.append(" ");
-		channel_numbering.append(&number);
-		std::string test = info.name;
+		std::string test = info.name + std::to_string(i);
 		char* cstr = new char[test.length() + 1];
 		strcpy(cstr, test.c_str());
 		names[i] = cstr;
