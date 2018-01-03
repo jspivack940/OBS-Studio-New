@@ -185,18 +185,20 @@ void asio_update(void *vptr, obs_data_t *settings);
 void fill_out_devices(obs_property_t *list) {
 	RtAudio audioList;
 	RtAudio::DeviceInfo info;
-	const char** names;
+	char** names = new char*[256];
 	int numOfDevices = get_device_number();
 	blog(LOG_INFO,"ASIO Devices: %i\n", numOfDevices);
 	// Scan through devices for various capabilities
 	for (uint8_t i = 0; i<numOfDevices; i++) {
 		info = audioList.getDeviceInfo(i);
 		if (info.probed == true) {
-			blog(LOG_INFO, "device  %i = %s \n", i, info.name);
+			blog(LOG_INFO, "device  %i = %s \n", i, info.name.c_str());
 			blog(LOG_INFO, ": maximum input channels = %i\n", info.inputChannels);
 			blog(LOG_INFO, ": maximum output channels = %i\n", info.outputChannels);
-			*names = info.name.c_str();
-			names += 1;
+			std::string test = info.name;
+			char* cstr = new char[test.length() + 1];
+			strcpy(cstr, test.c_str());
+			names[i] = cstr;
 		}
 	}
 
@@ -310,7 +312,7 @@ void asio_init(struct asio_data *data)
 	}
 	catch (RtAudioError& e) {
 		e.printMessage();
-		goto cleanup;
+//		goto cleanup;
 	}
 
 	struct obs_source_audio out;
@@ -339,10 +341,10 @@ void asio_init(struct asio_data *data)
 		obs_source_output_audio(data->source, &out);
 	}
 
-cleanup:
-	//if (adc.isStreamOpen())
-	//	adc.closeStream();
-	asio_deinit(data);
+//cleanup:
+//	if (adc.isStreamOpen())
+//		adc.closeStream();
+//	asio_deinit(data);
 }
 
 static void * asio_create(obs_data_t *settings, obs_source_t *source)
