@@ -190,7 +190,7 @@ void fill_out_devices(obs_property_t *list) {
 	char** names = new char*[numOfDevices];
 	blog(LOG_INFO,"ASIO Devices: %i\n", numOfDevices);
 	// Scan through devices for various capabilities
-	for (uint8_t i = 0; i<numOfDevices; i++) {
+	for (int i = 0; i<numOfDevices; i++) {
 		info = audioList.getDeviceInfo(i);
 		if (info.probed == true) {
 			blog(LOG_INFO, "device  %i = %s \n", i, info.name.c_str());
@@ -204,7 +204,7 @@ void fill_out_devices(obs_property_t *list) {
 	}
 
 	//add devices to list 
-	for (uint8_t i = 0; i < numOfDevices; i++) {
+	for (int i = 0; i < numOfDevices; i++) {
 //		const char dev_id = static_cast<char>(i);
 		blog(LOG_INFO, "list ASIO Devices: %i\n", numOfDevices);
 		blog(LOG_INFO, "list: device  %i = %s \n", i, names[i]);
@@ -315,16 +315,18 @@ void asio_init(struct asio_data *data)
 	}
 	catch (RtAudioError& e) {
 		e.printMessage();
+		blog(LOG_INFO, "error caught in asio_init");
 //		goto cleanup;
 	}
 
 	struct obs_source_audio out;
 	out.data[0] = data->buffer;
 	/* audio data passed to obs in planar format */
-	if (data->SampleSize == AUDIO_FORMAT_16BIT)
+	if (data->SampleSize == AUDIO_FORMAT_16BIT) {
 		out.format = AUDIO_FORMAT_16BIT_PLANAR;
-	if (data->SampleSize == AUDIO_FORMAT_32BIT)
+	} else if (data->SampleSize == AUDIO_FORMAT_32BIT) {
 		out.format = AUDIO_FORMAT_32BIT_PLANAR;
+	}
 
 	if (recorded_channels == 7) {
 		blog(LOG_ERROR, "OBS does not support 7 channels; defaulting to 8 channels");
@@ -374,7 +376,7 @@ void asio_deinit(struct asio_data *data)
 	}
 	catch (RtAudioError& e) {
 		e.printMessage();
-		blog(LOG_ERROR, "exception thrown");
+		blog(LOG_ERROR, "exception thrown in deinit");
 	}
 	if (data->buffer) {
 		bfree(data->buffer);
@@ -389,7 +391,7 @@ void asio_deinit(struct asio_data *data)
 void asio_destroy(void *vptr)
 {
 	struct asio_data *data = (asio_data *)vptr;
-//	asio_deinit(data);
+	asio_deinit(data);
 	delete data;
 }
 
@@ -405,9 +407,12 @@ void asio_update(void *vptr, obs_data_t *settings)
 	uint8_t channels;
 	uint8_t FirstChannel;
 	uint8_t LastChannel;
+	RtAudio::DeviceInfo info;
 
 	device = obs_data_get_string(settings, "device_id");
 	data->device = bstrdup(device);
+
+	info = get_device_info(device);
 
 	rate = (int)obs_data_get_int(settings, "sample rate");
 	if (data->SampleRate != (int)rate) {
@@ -426,7 +431,11 @@ void asio_update(void *vptr, obs_data_t *settings)
 
 	FirstChannel = (uint8_t)obs_data_get_int(settings, "first channel");
 	LastChannel = (uint8_t)obs_data_get_int(settings, "last channel");
-	channels = (uint8_t)get_audio_channels(ChannelFormat);
+	data->channels = info.inputChannels;
+	channels = data->channels;
+	data->output_channels = info.outputChannels;
+	data->device_index = get_device_index(device);
+
 	// check channels and swap if necessary
 	if (FirstChannel > channels || LastChannel > channels || FirstChannel < 0 ||
 			LastChannel < 0) {
@@ -441,7 +450,6 @@ void asio_update(void *vptr, obs_data_t *settings)
 			data->LastChannel = FirstChannel;
 		}
 	}
-
 }
 
 const char * asio_get_name(void *unused)
@@ -452,7 +460,7 @@ const char * asio_get_name(void *unused)
 
 void asio_get_defaults(obs_data_t *settings)
 {
-	obs_data_set_default_string(settings, "device_id", "default");
+//	obs_data_set_default_string(settings, "device_id", "default");
 	obs_data_set_default_int(settings, "sample rate", 48000);
 	obs_data_set_default_int(settings, CHANNEL_FORMAT, SPEAKERS_MONO);
 	obs_data_set_default_int(settings, "sample format", AUDIO_FORMAT_32BIT);
