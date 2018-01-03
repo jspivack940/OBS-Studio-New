@@ -185,8 +185,8 @@ void asio_update(void *vptr, obs_data_t *settings);
 void fill_out_devices(obs_property_t *list) {
 	RtAudio audioList;
 	RtAudio::DeviceInfo info;
-	char** names = new char*[256];
 	int numOfDevices = get_device_number();
+	char** names = new char*[numOfDevices];
 	blog(LOG_INFO,"ASIO Devices: %i\n", numOfDevices);
 	// Scan through devices for various capabilities
 	for (uint8_t i = 0; i<numOfDevices; i++) {
@@ -204,8 +204,10 @@ void fill_out_devices(obs_property_t *list) {
 
 	//add devices to list 
 	for (uint8_t i = 0; i < numOfDevices; i++) {
-		char *dev_id = (char*)i;
-		obs_property_list_add_string(list, names[i], dev_id);
+		const char dev_id = static_cast<char>(i);
+		blog(LOG_INFO, "list ASIO Devices: %i\n", numOfDevices);
+		blog(LOG_INFO, "list: device  %i = %s \n", i, names[i]);
+		obs_property_list_add_string(list, names[i], &dev_id);
 	}
 }
 
@@ -223,12 +225,15 @@ void fill_out_channels(obs_property_t *list) {
 
 	for (uint8_t i = 0; i < input_channels; i++) {
 		std::string channel_numbering(device);
-		const char** names;
+		char** names;
 		char *number;
 		*number = (char)i;
 		channel_numbering.append(" ");
 		channel_numbering.append(number);
-		names[i] = channel_numbering.c_str();
+		std::string test = info.name;
+		char* cstr = new char[test.length() + 1];
+		strcpy(cstr, test.c_str());
+		names[i] = cstr;
 		obs_property_list_add_int(list, names[i], i);
 	}
 }
