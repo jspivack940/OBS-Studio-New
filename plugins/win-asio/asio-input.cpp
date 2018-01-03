@@ -476,7 +476,7 @@ obs_properties_t * asio_get_properties(void *unused)
 	devices = obs_properties_add_list(props, "device_id",
 			obs_module_text("Device"), OBS_COMBO_TYPE_LIST,
 			OBS_COMBO_FORMAT_STRING);
-//	obs_property_set_modified_callback(devices, asio_device_changed);
+	obs_property_set_modified_callback(devices, asio_device_changed);
 	fill_out_devices(devices);
 	obs_property_list_add_string(devices, "Default", "default");
 
