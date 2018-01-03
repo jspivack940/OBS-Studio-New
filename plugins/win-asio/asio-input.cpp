@@ -186,7 +186,7 @@ void asio_destroy(void *vptr);
 void fill_out_devices(obs_property_t *list) {
 	RtAudio audioList;
 	RtAudio::DeviceInfo info;
-	int numOfDevices = get_device_number();
+	int numOfDevices = audioList.getDeviceCount();
 	char** names = new char*[numOfDevices];
 	blog(LOG_INFO,"ASIO Devices: %i\n", numOfDevices);
 	// Scan through devices for various capabilities
@@ -205,10 +205,10 @@ void fill_out_devices(obs_property_t *list) {
 
 	//add devices to list 
 	for (uint8_t i = 0; i < numOfDevices; i++) {
-		const char dev_id = static_cast<char>(i);
+//		const char dev_id = static_cast<char>(i);
 		blog(LOG_INFO, "list ASIO Devices: %i\n", numOfDevices);
 		blog(LOG_INFO, "list: device  %i = %s \n", i, names[i]);
-		obs_property_list_add_string(list, names[i], &dev_id);
+		obs_property_list_add_string(list, names[i], names[i]);
 	}
 }
 
@@ -296,8 +296,9 @@ void asio_init(struct asio_data *data)
 	// number of channels which will be captured
 	int recorded_channels = data->LastChannel - data->FirstChannel + 1;
 
-	RtAudio adc = data->adc;
-	uint8_t deviceNumber = get_device_number();
+	RtAudio adc;
+	data->adc = adc;
+	uint8_t deviceNumber = adc.getDeviceCount();
 	if (deviceNumber < 1) {
 		blog(LOG_INFO,"\nNo audio devices found!\n");
 	}
@@ -308,10 +309,11 @@ void asio_init(struct asio_data *data)
 	unsigned int sampleRate = data->SampleRate? data->SampleRate:48000;
 	unsigned int bufferFrames = data->BufferSize? data->BufferSize:256; // default is 256 frames
 	RtAudioFormat audioFormat = obs_to_rtasio_audio_format(data->SampleSize? data->SampleSize: AUDIO_FORMAT_32BIT);
-
+	RtAudio::StreamOptions options;
+	options.flags = RTAUDIO_NONINTERLEAVED;
 	try {
-		adc.openStream(&parameters, NULL, audioFormat, sampleRate,
-				&bufferFrames, &create_asio_buffer, (void *)&data);
+		adc.openStream(NULL, &parameters, audioFormat, sampleRate,
+				&bufferFrames, &create_asio_buffer, (void *)&data, &options);
 		adc.startStream();
 	}
 	catch (RtAudioError& e) {
