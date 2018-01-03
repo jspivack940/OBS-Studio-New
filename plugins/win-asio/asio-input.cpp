@@ -180,6 +180,7 @@ uint8_t get_device_index(const char *device) {
 /*****************************************************************************/
 void asio_deinit(struct asio_data *data);
 void asio_update(void *vptr, obs_data_t *settings);
+void asio_destroy(void *vptr);
 
 //creates the device list
 void fill_out_devices(obs_property_t *list) {
@@ -236,40 +237,40 @@ static bool fill_out_channels(obs_properties_t *props, obs_property_t *list, obs
 	return true;
 }
 
-//static bool asio_device_changed(obs_properties_t *props,
-//	obs_property_t *list, obs_data_t *settings)
-//{
-//	const char *curDeviceId = obs_data_get_string(settings, "device_id");
-//	obs_property_t *first_channel = obs_properties_get(props, "first channel");
-//	obs_property_t *last_channel = obs_properties_get(props, "last channel");
-//	obs_property_list_clear(first_channel);
-//	obs_property_list_clear(last_channel);
-//
-//	size_t itemCount = obs_property_list_item_count(list);
-//	bool itemFound = false;
-//
-//	for (size_t i = 0; i < itemCount; i++) {
-//		const char *DeviceId = obs_property_list_item_string(list, i);
-//		if (strcmp(DeviceId, curDeviceId) == 0) {
-//			itemFound = true;
-//			break;
-//		}
-//	}
-//
-//	if (!itemFound) {
-//		obs_property_list_insert_string(list, 0, " ", curDeviceId);
-//		obs_property_list_item_disable(list, 0, true);
-//	}
-//	//fill_out_channels(first_channel);
-//	//fill_out_channels(last_channel);
-//	return true;
-//}
-//static bool asio_first_channel_changed(obs_properties_t *props,
-//		obs_property_t *list, obs_data_t *settings)
-//{
-//	int channel_id = obs_data_get_int(settings, "first channel");
-//
-//}
+static bool asio_device_changed(obs_properties_t *props,
+	obs_property_t *list, obs_data_t *settings)
+{
+	const char *curDeviceId = obs_data_get_string(settings, "device_id");
+	obs_property_t *first_channel = obs_properties_get(props, "first channel");
+	obs_property_t *last_channel = obs_properties_get(props, "last channel");
+	obs_property_list_clear(first_channel);
+	obs_property_list_clear(last_channel);
+
+	size_t itemCount = obs_property_list_item_count(list);
+	bool itemFound = false;
+
+	for (size_t i = 0; i < itemCount; i++) {
+		const char *DeviceId = obs_property_list_item_string(list, i);
+		if (strcmp(DeviceId, curDeviceId) == 0) {
+			itemFound = true;
+			break;
+		}
+	}
+
+	if (!itemFound) {
+		obs_property_list_insert_string(list, 0, " ", curDeviceId);
+		obs_property_list_item_disable(list, 0, true);
+	}
+	//fill_out_channels(first_channel);
+	//fill_out_channels(last_channel);
+	return true;
+}
+static bool asio_first_channel_changed(obs_properties_t *props,
+		obs_property_t *list, obs_data_t *settings)
+{
+	int channel_id = obs_data_get_int(settings, "first channel");
+
+}
 
 int create_asio_buffer(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
 	double streamTime, RtAudioStreamStatus status, void *userData) {
@@ -345,9 +346,11 @@ void asio_init(struct asio_data *data)
 	}
 
 //cleanup:
-//	if (adc.isStreamOpen())
-//		adc.closeStream();
+//	asio_destroy(data);
 //	asio_deinit(data);
+	//if (adc.isStreamOpen())
+	//	adc.closeStream();
+	
 }
 
 static void * asio_create(obs_data_t *settings, obs_source_t *source)
@@ -372,21 +375,22 @@ void asio_deinit(struct asio_data *data)
 	}
 	catch (RtAudioError& e) {
 		e.printMessage();
+		blog(LOG_ERROR, "exception thrown");
 	}
 	if (data->buffer) {
 		bfree(data->buffer);
 		data->buffer = NULL;
 	}
 
-	if (adc.isStreamOpen()) {
-		adc.closeStream();
-	}
+//	if (adc.isStreamOpen()) {
+//		adc.closeStream();
+//	}
 }
 
 void asio_destroy(void *vptr)
 {
 	struct asio_data *data = (asio_data *)vptr;
-	asio_deinit(data);
+//	asio_deinit(data);
 	delete data;
 }
 
@@ -514,7 +518,7 @@ obs_properties_t * asio_get_properties(void *unused)
 			SPEAKERS_7POINT1);
 
 	sample_size = obs_properties_add_list(props, "sample size",
-			TEXT_SAMPLE_SIZE, OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+			TEXT_SAMPLE_SIZE, OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(sample_size, "16 bit", AUDIO_FORMAT_16BIT);
 	obs_property_list_add_int(sample_size, "32 bit", AUDIO_FORMAT_32BIT);
 
