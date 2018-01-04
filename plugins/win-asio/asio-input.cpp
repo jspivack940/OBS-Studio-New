@@ -386,6 +386,8 @@ void asio_init(struct asio_data *data)
 		blog(LOG_INFO, "error text number is %s\n", e.getMessage());
 		//		goto cleanup;
 	}
+
+	return;
 cleanup:
 	try {
 		adc.stopStream();
