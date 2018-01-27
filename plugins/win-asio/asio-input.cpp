@@ -236,7 +236,7 @@ public:
 
 		memset(&route[0], -1, sizeof(DWORD) * 8);
 
-		stop_listening_signal = CreateEvent(nullptr, false, false, nullptr);
+		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
 
 	~asio_data() {
@@ -253,6 +253,7 @@ public:
 			WaitForSingleObject(captureThread, INFINITE);
 			//CloseHandle(captureThread);
 		}
+		ResetEvent(stop_listening_signal);
 		return true;
 	}
 
@@ -405,7 +406,7 @@ public:
 
 		all_recieved_signal = CreateEvent(nullptr, true, false, nullptr);
 		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
-		stop_listening_signal = CreateEvent(nullptr, false, false, nullptr);
+		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
 
 	device_data(size_t buffers, audio_format audioformat) {
@@ -421,7 +422,7 @@ public:
 
 		all_recieved_signal = CreateEvent(nullptr, true, false, nullptr);
 		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
-		stop_listening_signal = CreateEvent(nullptr, false, false, nullptr);
+		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
 
 	~device_data() {
