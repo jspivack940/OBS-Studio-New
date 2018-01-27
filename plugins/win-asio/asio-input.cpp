@@ -251,6 +251,7 @@ public:
 		SetEvent(stop_listening_signal);
 		if (captureThread.Valid()) {
 			WaitForSingleObject(captureThread, INFINITE);
+			//CloseHandle(captureThread);
 		}
 		return true;
 	}
@@ -344,16 +345,15 @@ private:
 	size_t write_index;
 	size_t buffer_count;
 
+	size_t buffer_size;
 	uint32_t frames;
 	long input_chs;
 	audio_format format;
-	uint32_t samples_per_sec;
-
-	size_t buffer_size;
 	//not in use...
 	WinHandle *receive_signals;
-	//in use
+	//create a square tick signal w/ two events
 	WinHandle all_recieved_signal;
+	WinHandle all_recieved_signal_2;
 	//to close out the device
 	WinHandle stop_listening_signal;
 	//tell listeners to to reinit
@@ -367,6 +367,8 @@ private:
 
 	circlebuf audio_buffer;
 public:
+	uint32_t samples_per_sec;
+
 	const WinHandle * get_handles() {
 		return receive_signals;
 	}
@@ -402,6 +404,7 @@ public:
 		buffer_count = 32;
 
 		all_recieved_signal = CreateEvent(nullptr, true, false, nullptr);
+		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
 		stop_listening_signal = CreateEvent(nullptr, false, false, nullptr);
 	}
 
@@ -417,6 +420,7 @@ public:
 		buffer_count = buffers ? buffers : 32;
 
 		all_recieved_signal = CreateEvent(nullptr, true, false, nullptr);
+		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
 		stop_listening_signal = CreateEvent(nullptr, false, false, nullptr);
 	}
 
@@ -545,6 +549,7 @@ public:
 			return;
 		}
 		ResetEvent(all_recieved_signal);
+		SetEvent(all_recieved_signal_2);
 		//get as much information from the device that called this function
 		BASS_ASIO_INFO info;
 		bool ret = BASS_ASIO_GetInfo(&info);
@@ -582,6 +587,7 @@ public:
 		write_index++;
 		write_index = write_index % buffer_count;
 		SetEvent(all_recieved_signal);
+		ResetEvent(all_recieved_signal_2);
 	}
 
 	static DWORD WINAPI capture_thread(void *data) {
@@ -597,7 +603,8 @@ public:
 		thread_name += device->device_info.name;//thread_name += " capture thread";
 		os_set_thread_name(thread_name.c_str());
 
-		HANDLE signals[3] = { device->all_recieved_signal, device->stop_listening_signal, source->stop_listening_signal };
+		HANDLE signals_1[3] = { device->all_recieved_signal, device->stop_listening_signal, source->stop_listening_signal };
+		HANDLE signals_2[3] = { device->all_recieved_signal_2, device->stop_listening_signal, source->stop_listening_signal };
 
 		long route[MAX_AUDIO_CHANNELS];
 		for (short i = 0; i < aoi.speakers; i++) {
@@ -610,8 +617,13 @@ public:
 		blog(LOG_INFO, "listener for device %lu created: source: %s", device->device_index, source->get_id());
 
 		size_t read_index = device->write_index;//0;
+		int waitResult;
+
+		uint64_t buffer_time = ((device->frames * NSEC_PER_SEC) / device->samples_per_sec);
+
 		while (source && device) {
-			int waitResult = WaitForMultipleObjects(3, signals, false, INFINITE);
+			waitResult = WaitForMultipleObjects(3, signals_1, false, INFINITE);
+			waitResult = WaitForMultipleObjects(3, signals_2, false, INFINITE);
 			//not entirely sure that all of these conditions are correct (at the very least this is)
 			if (waitResult == WAIT_OBJECT_0) {
 				while (read_index != device->write_index) {
@@ -630,6 +642,10 @@ public:
 					blog(LOG_INFO, "%s closing", thread_name.c_str());
 					return 0;
 				}
+				//uint64_t t_stamp = os_gettime_ns();
+				//os_sleepto_ns(t_stamp + buffer_time);
+				//os_sleepto_ns(os_gettime_ns() + ((device->frames * NSEC_PER_SEC) / device->samples_per_sec));
+				//Sleep(1);
 				//microsoft docs on the return codes gives the impression that you're supposed to subtract wait_object_0
 			}
 			else if (waitResult == WAIT_OBJECT_0 + 1) {
@@ -689,6 +705,7 @@ public:
 		parameters->device = this;
 		blog(LOG_INFO, "disconnecting any previous connections (source_id: %s)", listener->get_id());
 		listener->disconnect();
+		//CloseHandle(listener->captureThread);
 		blog(LOG_INFO, "adding listener for %lu (source: %lu)", device_index, listener->device_index);
 		listener->captureThread = CreateThread(nullptr, 0, this->capture_thread, parameters, 0, nullptr);
 	}
