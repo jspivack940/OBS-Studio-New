@@ -198,7 +198,7 @@ public:
 	obs_source_t *source;
 
 	/*asio device and info */
-	const char *device;
+	std::string device_name;
 	uint8_t device_index;
 
 	uint64_t first_ts;       //first timestamp
@@ -1327,7 +1327,7 @@ static void * asio_create(obs_data_t *settings, obs_source_t *source)
 
 	data->source = source;
 	data->first_ts = 0;
-	data->device = NULL;
+	data->device_name.clear();
 
 	asio_update(data, settings);
 
@@ -1356,7 +1356,7 @@ void asio_destroy(void *vptr)
 void asio_update(void *vptr, obs_data_t *settings)
 {
 	struct asio_data *data = (asio_data *)vptr;
-	const char *device;
+	std::string device_name;
 	unsigned int rate;
 	audio_format BitDepth;
 	uint16_t BufferSize;
@@ -1368,7 +1368,7 @@ void asio_update(void *vptr, obs_data_t *settings)
 	DWORD device_index;
 	int numDevices = getDeviceCount();
 	bool device_changed = false;
-	const char *prev_device;
+	std::string prev_device_name;
 	DWORD prev_device_index;
 	// lock down the settings mutex (protect against a sudden change when reading buffers)
 	//EnterCriticalSection(&data->settings_mutex);
@@ -1377,29 +1377,29 @@ void asio_update(void *vptr, obs_data_t *settings)
 	data->recorded_channels = recorded_channels;
 
 	// get device from settings
-	device = obs_data_get_string(settings, "device_id");
+	device_name = obs_data_get_string(settings, "device_id");
 
-	if (device == NULL || device[0] == '\0') {
+	if (device_name.empty()) {
 		blog(LOG_INFO, "Device not yet set \n");
 	}
-	else if (data->device == NULL || data->device[0] == '\0') {
-		data->device = bstrdup(device);
+	else if (data->device_name.empty()) {
+		data->device_name = device_name;
 	}
 	else {
-		if (strcmp(device, data->device) != 0) {
-			prev_device = bstrdup(data->device);
-			data->device = bstrdup(device);
+		if (device_name != data->device_name) {
+			prev_device_name = data->device_name;
+			data->device_name = device_name;
 			device_changed = true;
 		}
 	}
 
-	if (device != NULL && device[0] != '\0') {
-		device_index = get_device_index(device);
+	if (!device_name.empty()) {
+		device_index = get_device_index(device_name.c_str());
 		if (!device_changed) {
 			prev_device_index = device_index;
 		}
 		else {
-			prev_device_index = get_device_index(prev_device);
+			prev_device_index = get_device_index(prev_device_name.c_str());
 		}
 		// check if device is already initialized
 		ret = BASS_ASIO_Init(device_index, BASS_ASIO_THREAD);
@@ -1448,7 +1448,7 @@ void asio_update(void *vptr, obs_data_t *settings)
 		BASS_ASIO_DEVICEINFO devinfo;
 		int index = BASS_ASIO_GetDevice();
 		ret = BASS_ASIO_GetDeviceInfo(index, &devinfo);
-		if (!strcmp(device, devinfo.name)) {
+		if (device_name.compare(devinfo.name)) {
 			blog(LOG_ERROR, "Device loaded is not the one in settings\n");
 		}
 
