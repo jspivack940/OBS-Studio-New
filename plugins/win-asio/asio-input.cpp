@@ -544,7 +544,7 @@ public:
 		check_all();
 	}
 
-	void write_buffer_interleaved(void* buffer, DWORD BufSize) {
+	void write_buffer_interleaved(void* buffer, DWORD BufSize, uint64_t timestamp_on_callback) {
 		if (!all_prepped) {
 			blog(LOG_INFO, "%s device %i is not prepared", __FUNCTION__, device_index);
 			return;
@@ -583,7 +583,7 @@ public:
 		_source_audio->frames = frames_count;
 		_source_audio->input_chs = info.inputs;
 		_source_audio->samples_per_sec = samples_per_sec;
-		_source_audio->timestamp = _source_audio->timestamp = os_gettime_ns() - ((_source_audio->frames * NSEC_PER_SEC) / _source_audio->samples_per_sec);
+		_source_audio->timestamp = _source_audio->timestamp = timestamp_on_callback - ((_source_audio->frames * NSEC_PER_SEC) / _source_audio->samples_per_sec);
 
 		write_index++;
 		write_index = write_index % buffer_count;
@@ -1112,11 +1112,12 @@ int mix(uint8_t *inputBuffer, obs_source_audio *out, size_t bytes_per_ch, int ro
 	return true;
 }
 
-DWORD CALLBACK create_asio_buffer(BOOL input, DWORD channel, void *buffer, DWORD BufSize, void *device_ptr) {
+DWORD CALLBACK asio_channel_callback(BOOL input, DWORD channel, void *buffer, DWORD BufSize, void *device_ptr) {
+	uint64_t timestamp_on_callback = os_gettime_ns();
 	BASS_ASIO_INFO info;
 	bool ret = BASS_ASIO_GetInfo(&info);
 	device_data *device = (device_data*)device_ptr;
-	device->write_buffer_interleaved(buffer, BufSize);
+	device->write_buffer_interleaved(buffer, BufSize, timestamp_on_callback);
 
 	return 0;
 }
@@ -1278,7 +1279,7 @@ void asio_init(struct asio_data *data)
 		ret = BASS_ASIO_SetNotify(asio_device_setting_changed, device_list[device_index]);
 
 		// enable all chs and link to callback w/ the device buffer class
-		ret = BASS_ASIO_ChannelEnable(true, 0, &create_asio_buffer, device_list[device_index]);//data
+		ret = BASS_ASIO_ChannelEnable(true, 0, &asio_channel_callback, device_list[device_index]);//data
 
 		for (DWORD i = 1; i < info.inputs; i++) {
 			BASS_ASIO_ChannelJoin(true, i, 0);
