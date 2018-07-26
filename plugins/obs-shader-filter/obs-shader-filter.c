@@ -631,6 +631,10 @@ struct shader_filter_data {
 	gs_effect_t *effect;
 	gs_texrender_t *texrender;
 
+	gs_stagesurf_t *surf;
+	bool read_texture;
+	uint32_t cycle;
+
 	bool reload_effect;
 	struct dstr last_path;
 
@@ -844,6 +848,7 @@ static void *shader_filter_create(obs_data_t *settings, obs_source_t *source)
 	filter->settings      = settings;
 	filter->reload_effect = true;
 	filter->effect        = NULL;
+	filter->cycle = 0;
 
 	filter->texrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 
@@ -881,6 +886,7 @@ static void shader_filter_destroy(void *data)
 	obs_enter_graphics();
 	gs_effect_destroy(filter->effect);
 	gs_texrender_destroy(filter->texrender);
+	gs_stagesurface_destroy(filter->surf);
 	filter->effect = NULL;
 	obs_leave_graphics();
 
@@ -2206,27 +2212,10 @@ static gs_texture_t *render_original(void *data, gs_effect_t *effect, float sour
 	obs_source_t *target = obs_filter_get_target(filter->context);
 	obs_source_t *parent = obs_filter_get_parent(filter->context);
 
-	if (!target || !parent) {
-		/* obs_source_skip_video_filter(filter->context); */
+	if (!target || !parent)
 		return NULL;
-	}
-	/*
-	if(filter->processing_frame){
-		return;
-	}
-	*/
-	/*
-	if (f->processed_frame) {
-		draw_frame(f);
-		return;
-	}
-	*/
-	/*
-	struct frame frame;
-	circlebuf_pop_front(&f->frames, &frame, sizeof(frame));
-	*/
+
 	gs_texrender_reset(filter->texrender);
-	//gs_texrender_reset(frame.render);
 
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_ZERO);
@@ -2252,11 +2241,57 @@ static gs_texture_t *render_original(void *data, gs_effect_t *effect, float sour
 
 	gs_blend_state_pop();
 
-	/* circlebuf_push_back(&f->frames, &frame, sizeof(frame)); */
-	/* draw_frame(filter); */
-	/* f->processed_frame = true; */
-	return gs_texrender_get_texture(filter->texrender);/* draw_frame(filter); */
+	return gs_texrender_get_texture(filter->texrender);
 }
+
+#define _render_delay 30
+static uint8_t* process_surf(void *data, size_t source_cy)
+{
+	struct shader_filter_data *filter = data;
+	obs_source_t *parent = obs_filter_get_parent(filter->context);
+	if (!parent || !filter->context)
+		return NULL;
+	const char* p = obs_source_get_name(parent);
+	const char* f = obs_source_get_name(filter->context);
+	struct dstr path = {0};
+	dstr_copy(&path, "C:\\Users\\Alex\\Desktop\\");
+	dstr_cat(&path, p);
+	dstr_cat_ch(&path, '_');
+	dstr_cat(&path, f);
+	dstr_cat(&path, ".raw");
+	uint8_t *tex_data = NULL;
+	if (filter->read_texture && filter->surf && filter->cycle == (_render_delay - 1)) {
+		filter->read_texture = false;
+		uint32_t linesize = 0;
+	//	os_sleep_ms(8);
+		if (gs_stagesurface_map(filter->surf, &tex_data, &linesize)) {
+			/* write to buffer */
+			//os_unlink(path.array);
+			size_t size = linesize * source_cy;
+			uint8_t *dup = (uint8_t*)bmemdup(tex_data, size);
+			tex_data = dup;
+			//	blog(LOG_INFO, "frame: %s", path.array);
+			gs_stagesurface_unmap(filter->surf);
+			//os_quick_write_utf8_file(path.array, dup, size, false);
+			//bfree(dup);
+		}
+	}
+	dstr_free(&path);
+	filter->cycle = (filter->cycle + 1) % _render_delay;
+	return tex_data;
+}
+
+/*
+gs_stagesurf_t *surf = gs_stagesurface_create(src_cx, src_cy, GS_RGBA);
+gs_texture_t *tex = render_original(data, effect, src_cx, src_cy);
+uint8_t *tex_data = NULL;
+uint32_t linesize;
+gs_stage_texture(surf, tex);
+if(gs_stagesurface_map(surf, &tex_data, &linesize)){
+//do things here
+gs_stagesurface_unmap(surf);
+}
+*/
 
 static void shader_filter_render(void *data, gs_effect_t *effect)
 {
@@ -2266,34 +2301,34 @@ static void shader_filter_render(void *data, gs_effect_t *effect)
 
 	float src_cx = (float)obs_source_get_width(filter->context);
 	float src_cy = (float)obs_source_get_height(filter->context);
-
-	//gs_texture_t *tex = render_source_tex_direct(filter->context, filter->texrender, src_cx, src_cy);
-	/*
-	gs_effect_t *basic_effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
-	gs_texture_t *tex = gs_texrender_get_texture(filter->texrender);
-	if (tex) {
-		gs_eparam_t *image =
-			gs_effect_get_param_by_name(effect, "image");
-		gs_effect_set_texture(image, tex);
-
-		while (gs_effect_loop(effect, "Draw"))
-			gs_draw_sprite(tex, 0, src_cx, src_cy);
+	float surf_cx = 0;
+	float surf_cy = 0;
+	if (filter->surf) {
+		surf_cx = gs_stagesurface_get_width(filter->surf);
+		surf_cy = gs_stagesurface_get_height(filter->surf);
+		if (surf_cx != src_cx || surf_cy != src_cy) {
+			obs_enter_graphics();
+			gs_stagesurface_destroy(filter->surf);
+			obs_leave_graphics();
+			filter->surf = NULL;
+		}
 	}
-	*/
-	
-	gs_stagesurf_t *surf = gs_stagesurface_create(src_cx, src_cy, GS_RGBA);
-	gs_texture_t *tex = render_original(data, effect, src_cx, src_cy);
-	uint8_t *tex_data;
-	uint32_t linesize;
-	gs_stage_texture(surf, tex);
-	gs_stagesurface_map(surf, &tex_data, &linesize);
-	gs_stagesurface_unmap(surf);
-	gs_stagesurface_destroy(surf);
 
+	if (!filter->surf)
+		filter->surf = gs_stagesurface_create(src_cx, src_cy, GS_RGBA);
+
+	if (filter->cycle == 0) {
+		gs_texture_t *tex = render_original(data, effect, src_cx, src_cy);
+		gs_stage_texture(filter->surf, tex);
+		filter->read_texture = true;
+	}
+
+	/* Do the normal things */
+	/*
 	if (filter->effect != NULL) {
 		if (!obs_source_process_filter_begin(filter->context, GS_RGBA,
-				    OBS_NO_DIRECT_RENDERING))
-			return;
+			OBS_NO_DIRECT_RENDERING))
+			goto readtexture;
 
 		if (filter->param_uv_scale != NULL)
 			gs_effect_set_vec2(filter->param_uv_scale,
@@ -2311,7 +2346,6 @@ static void shader_filter_render(void *data, gs_effect_t *effect)
 			gs_effect_set_float(filter->param_elapsed_time,
 					filter->elapsed_time);
 
-		/* Assign parameter values to filter */
 		size_t param_count = filter->stored_param_list.num;
 		for (size_t param_index = 0; param_index < param_count;
 				param_index++) {
@@ -2324,6 +2358,46 @@ static void shader_filter_render(void *data, gs_effect_t *effect)
 		
 		obs_source_process_filter_end(filter->context, filter->effect,
 				filter->total_width, filter->total_height);
+
+	} else {
+		obs_source_skip_video_filter(filter->context);
+	}
+	*/
+	uint8_t *tex_data = NULL;
+readtexture:
+	tex_data = process_surf(filter, src_cy);
+	if (tex_data && filter->surf) {
+		uint32_t stage_cx = gs_stagesurface_get_width(filter->surf);
+		uint32_t stage_cy = gs_stagesurface_get_height(filter->surf);
+
+		obs_enter_graphics();
+		gs_texture_t *ret = gs_texture_create(stage_cx, stage_cy, gs_stagesurface_get_color_format(filter->surf), 1, tex_data, 0);
+		obs_leave_graphics();
+
+		gs_effect_t *base = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+		if (!obs_source_process_filter_begin(filter->context, GS_RGBA,
+			OBS_NO_DIRECT_RENDERING)) {
+			bfree(tex_data);
+			/*
+			obs_enter_graphics();
+			gs_texture_destroy(ret);
+			obs_leave_graphics();
+			*/
+			return;
+		}
+
+		gs_eparam_t *image =
+			gs_effect_get_param_by_name(effect, "image");
+		gs_effect_set_texture(image, ret);
+
+		obs_source_process_filter_end(filter->context, base, filter->total_width, filter->total_height);
+		
+		bfree(tex_data);
+		/*
+		obs_enter_graphics();
+		gs_texture_destroy(ret);
+		obs_leave_graphics();
+		*/
 	} else {
 		obs_source_skip_video_filter(filter->context);
 	}
