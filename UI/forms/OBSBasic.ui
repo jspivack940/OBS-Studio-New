@@ -289,6 +289,7 @@
      <addaction name="separator"/>
      <addaction name="toggleScenes"/>
      <addaction name="toggleSources"/>
+     <addaction name="toggleMasterMixer"/>
      <addaction name="toggleMixer"/>
      <addaction name="toggleTransitions"/>
      <addaction name="toggleControls"/>
