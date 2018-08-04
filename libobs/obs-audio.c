@@ -450,6 +450,17 @@ bool audio_callback(void *param,
 
 			pthread_mutex_unlock(&source->audio_buf_mutex);
 		}
+
+		for (size_t i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+			struct audio_data audio_out;
+			for (size_t j = 0; j < channels; j++) {
+				audio_out.data[j] = mixes[i].data[j];
+				audio_out.frames = AUDIO_OUTPUT_FRAMES;
+				audio_out.timestamp = start_ts_in;
+			}
+			volmeter_data_received(meters[i], &audio_out,
+				data->audio_mixes.muted[i]);
+		}
 	}
 
 	/* ------------------------------------------------ */

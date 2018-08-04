@@ -90,6 +90,15 @@ enum obs_peak_meter_type {
 };
 
 /**
+* @brief Update a volumter's peaks
+* @param vptr poitner to the volumeter object
+* @param data pointer to the audio to process
+* @param muted whether the audio is muted
+*/
+EXPORT void volmeter_data_received(void *vptr,
+		const struct audio_data *data, bool muted)
+
+/**
  * @brief Create a fader
  * @param type the type of the fader
  * @return pointer to the fader object
