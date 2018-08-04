@@ -570,6 +570,8 @@ static bool obs_init_data(void)
 		data->audio_mixes.muted[i] = false;
 		data->audio_mixes.recording_enabled[i] = false;
 		data->audio_mixes.stream_enabled[i] = false;
+		data->audio_mixes.meters[i] = NULL;
+		data->audio_mixes.faders[i] = NULL;
 	}
 
 	data->valid = true;
