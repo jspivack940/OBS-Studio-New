@@ -1328,6 +1328,28 @@ void obs_enum_sources(bool (*enum_proc)(void*, obs_source_t*), void *param)
 	pthread_mutex_unlock(&obs->data.sources_mutex);
 }
 
+struct obs_audio_mixes *obs_audio_mixes()
+{
+	struct obs_audio_mixes *mixes;
+	if (!obs)
+		return NULL;
+	/* pthread things should we need them */
+	mixes = &obs->data.audio_mixes;
+	/* pthread thigns should we need them */
+	return mixes;
+}
+
+float *obs_audio_mix_volumes()
+{
+	float *volumes;
+	if (!obs)
+		return NULL;
+
+	volumes = &obs->data.audio_mixes.volume[0];
+
+	return volumes;
+}
+
 static inline void obs_enum(void *pstart, pthread_mutex_t *mutex, void *proc,
 		void *param)
 {

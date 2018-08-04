@@ -544,6 +544,11 @@ EXPORT void obs_enum_encoders(bool (*enum_proc)(void*, obs_encoder_t*),
 EXPORT void obs_enum_services(bool (*enum_proc)(void*, obs_service_t*),
 		void *param);
 
+/** Gets mixer information */
+EXPORT struct obs_audio_mixes *obs_audio_mixes();
+
+/** Gets mixer volume information */
+EXPORT float *obs_audio_mix_volumes();
 /**
  * Gets a source by its name.
  *

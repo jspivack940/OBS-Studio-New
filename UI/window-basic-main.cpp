@@ -1668,6 +1668,10 @@ void OBSBasic::OBSInit()
 	ui->viewMenu->addAction(QTStr("MultiviewWindowed"),
 			this, SLOT(OpenMultiviewWindow()));
 
+	/* ----------------------- */
+	/* Add mixers      */
+	InitAudioMaster();
+
 #if !defined(_WIN32) && !defined(__APPLE__)
 	delete ui->actionShowCrashLogs;
 	delete ui->actionUploadLastCrashLog;
@@ -2945,11 +2949,12 @@ void OBSBasic::InitAudioMaster() {
 
 	bool vertical = config_get_bool(GetGlobalConfig(), "BasicWindow",
 		"VerticalMasterVolControl");
-	float *tracks[MAX_AUDIO_MIXES];
+	float *mixes = obs_audio_mix_volumes();
+	//float *tracks[MAX_AUDIO_MIXES];
 	VolControl *vol[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
-		tracks[i] = new float;
-		vol[i] = new VolControl(tracks[i], true, vertical);
+		//tracks[i] = new float;
+		vol[i] = new VolControl(&mixes[i], true, vertical);
 	}
 
 	double meterDecayRate = config_get_double(basicConfig, "Audio",
