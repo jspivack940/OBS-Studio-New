@@ -308,11 +308,16 @@ struct obs_core_audio {
 	char                            *monitoring_device_id;
 };
 
+extern struct obs_volumeter;
+extern struct obs_fader_t;
+
 struct obs_audio_mixes {
 	float volume[MAX_AUDIO_MIXES];
 	bool muted[MAX_AUDIO_MIXES];
 	bool stream_enabled[MAX_AUDIO_MIXES];
 	bool recording_enabled[MAX_AUDIO_MIXES];
+	struct obs_volumeter_t *meters[MAX_AUDIO_MIXES];
+	struct obs_fader_t *faders[MAX_AUDIO_MIXES];
 };
 
 /* user sources, output channels, and displays */

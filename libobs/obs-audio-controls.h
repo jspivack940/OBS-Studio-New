@@ -96,7 +96,7 @@ enum obs_peak_meter_type {
 * @param muted whether the audio is muted
 */
 EXPORT void volmeter_data_received(void *vptr,
-		const struct audio_data *data, bool muted)
+		const struct audio_data *data, bool muted);
 
 /**
  * @brief Create a fader

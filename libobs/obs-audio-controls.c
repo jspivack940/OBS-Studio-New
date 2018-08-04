@@ -521,6 +521,8 @@ void volmeter_data_received(void *vptr, const struct audio_data *data,
 	float magnitude[MAX_AUDIO_CHANNELS];
 	float peak[MAX_AUDIO_CHANNELS];
 	float input_peak[MAX_AUDIO_CHANNELS];
+	if (!volmeter)
+		return;
 
 	pthread_mutex_lock(&volmeter->mutex);
 
@@ -550,7 +552,7 @@ void volmeter_data_received(void *vptr, const struct audio_data *data,
 static void volmeter_source_data_received(void *vptr, obs_source_t *source,
 		const struct audio_data *data, bool muted)
 {
-	volmeter_data_recieved(vptr, data, muted);
+	volmeter_data_received(vptr, data, muted);
 	UNUSED_PARAMETER(source);
 }
 

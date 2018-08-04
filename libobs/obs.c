@@ -1350,6 +1350,38 @@ float *obs_audio_mix_volumes()
 	return volumes;
 }
 
+void *obs_audio_mix_meters()
+{
+	void *meters;
+	if (!obs)
+		return NULL;
+
+	meters = &obs->data.audio_mixes.meters[0];
+	
+	return meters;
+}
+
+void *obs_audio_mix_faders()
+{
+	void *faders;
+	if (!obs)
+		return NULL;
+
+	faders = &obs->data.audio_mixes.faders[0];
+
+	return faders;
+}
+
+bool *obs_audio_mix_muted()
+{
+	void *muted;
+	if (!obs)
+		return NULL;
+
+	muted = &obs->data.audio_mixes.muted[0];
+	return muted;
+}
+
 static inline void obs_enum(void *pstart, pthread_mutex_t *mutex, void *proc,
 		void *param)
 {

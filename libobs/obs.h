@@ -549,6 +549,13 @@ EXPORT struct obs_audio_mixes *obs_audio_mixes();
 
 /** Gets mixer volume information */
 EXPORT float *obs_audio_mix_volumes();
+/** Gets mixer meter information */
+EXPORT void *obs_audio_mix_meters();
+/** Gets mixer fader information */
+EXPORT void *obs_audio_mix_faders();
+/** Gets mixer mute information */
+EXPORT bool *obs_audio_mix_muted();
+
 /**
  * Gets a source by its name.
  *

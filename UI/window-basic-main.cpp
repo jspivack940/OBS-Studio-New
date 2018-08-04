@@ -2956,11 +2956,16 @@ void OBSBasic::InitAudioMaster() {
 	bool vertical = config_get_bool(GetGlobalConfig(), "BasicWindow",
 			"VerticalMasterVolControl");
 	float *mixes = obs_audio_mix_volumes();
+	obs_volmeter_t **meters = (obs_volmeter_t **)obs_audio_mix_meters();
+	obs_fader_t **faders = (obs_fader_t **)obs_audio_mix_faders();
+	bool *muted = obs_audio_mix_muted();
 	//float *tracks[MAX_AUDIO_MIXES];
 	VolControl *vol[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
 		//tracks[i] = new float;
 		vol[i] = new VolControl(&mixes[i], i, true, vertical);
+		meters[i] = vol[i]->GetMeter();
+		faders[i] = vol[i]->GetFader();
 	}
 
 	double meterDecayRate = config_get_double(basicConfig, "Audio",
