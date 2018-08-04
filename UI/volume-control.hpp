@@ -265,6 +265,8 @@ public:
 	~VolControl();
 
 	inline obs_source_t *GetSource() const {return source;}
+	inline obs_fader_t *GetFader() const { return obs_fader; }
+	inline obs_volmeter_t *GetMeter() const { return obs_volmeter; }
 
 	QString GetName() const;
 	void SetName(const QString &newName);

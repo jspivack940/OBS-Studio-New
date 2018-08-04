@@ -47,6 +47,7 @@ struct obs_fader {
 	obs_fader_conversion_t def_to_db;
 	obs_fader_conversion_t db_to_def;
 	obs_source_t           *source;
+	int                    track_index;
 	float                  *vol;
 	enum obs_fader_type    type;
 	float                  max_db;
@@ -66,6 +67,7 @@ struct meter_cb {
 struct obs_volmeter {
 	pthread_mutex_t             mutex;
 	obs_source_t                *source;
+	int                         track_index;
 	enum obs_fader_type         type;
 	float                       cur_db;
 
@@ -710,6 +712,7 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 	pthread_mutex_lock(&fader->mutex);
 
 	fader->source = source;
+	fader->track_index = -1;
 	fader->cur_db = mul_to_db(vol);
 
 	pthread_mutex_unlock(&fader->mutex);
@@ -717,22 +720,13 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 	return true;
 }
 
-void obs_fader_detach_float(obs_fader_t *fader)
-{
-	if (!fader)
-		return;
-
-	pthread_mutex_lock(&fader->mutex);
-	fader->source = NULL;
-	pthread_mutex_unlock(&fader->mutex);
-}
-
-bool obs_fader_attach_float(obs_fader_t *fader, float *vol)
+bool obs_fader_attach_float(obs_fader_t *fader, float *vol, int trackIndex)
 {
 	if (!fader || !vol)
 		return false;
 
 	pthread_mutex_lock(&fader->mutex);
+	fader->track_index = trackIndex;
 	fader->vol = vol;
 	fader->cur_db = mul_to_db(*vol);
 	pthread_mutex_unlock(&fader->mutex);
@@ -750,6 +744,7 @@ void obs_fader_detach_source(obs_fader_t *fader)
 	pthread_mutex_lock(&fader->mutex);
 	source = fader->source;
 	fader->source = NULL;
+	fader->track_index = -1;
 	pthread_mutex_unlock(&fader->mutex);
 
 	if (!source)
@@ -847,8 +842,23 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 	pthread_mutex_lock(&volmeter->mutex);
 
 	volmeter->source = source;
+	volmeter->track_index = -1;
 	volmeter->cur_db = mul_to_db(vol);
 
+	pthread_mutex_unlock(&volmeter->mutex);
+
+	return true;
+}
+
+bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol, int trackIndex) {
+
+	if (!volmeter || !vol)
+		return false;
+
+	pthread_mutex_lock(&volmeter->mutex);
+	volmeter->track_index = trackIndex;
+	volmeter->source = NULL;
+	volmeter->cur_db = mul_to_db(*vol);
 	pthread_mutex_unlock(&volmeter->mutex);
 
 	return true;
@@ -865,6 +875,7 @@ void obs_volmeter_detach_source(obs_volmeter_t *volmeter)
 	pthread_mutex_lock(&volmeter->mutex);
 	source = volmeter->source;
 	volmeter->source = NULL;
+	volmeter->track_index = -1;
 	pthread_mutex_unlock(&volmeter->mutex);
 
 	if (!source)
@@ -918,8 +929,6 @@ int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 	if (volmeter->source) {
 		source_nr_audio_channels = get_audio_channels(
 			volmeter->source->sample_info.speakers);
-	} else {
-		source_nr_audio_channels = 1;
 	}
 
 	struct obs_audio_info audio_info;
@@ -928,6 +937,9 @@ int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 	} else {
 		obs_nr_audio_channels = 2;
 	}
+
+	if (volmeter->track_index != -1)
+		source_nr_audio_channels = obs_nr_audio_channels;
 
 	return CLAMP(source_nr_audio_channels, 1, obs_nr_audio_channels);
 }

@@ -77,7 +77,7 @@ void VolControl::updateText()
 			.append(" dB");
 	volLabel->setText(db);
 
-	bool muted = obs_source_muted(source);
+	bool muted = source !=NULL ? obs_source_muted(source) : false;
 	const char *accTextLookup = muted
 		? "VolControl.SliderMuted"
 		: "VolControl.SliderUnmuted";
@@ -324,7 +324,6 @@ vertical(vertical)
 		nameLayout->setSpacing(0);
 		nameLayout->addWidget(nameLabel);
 
-
 		controlLayout->setContentsMargins(0, 0, 0, 0);
 		controlLayout->setSpacing(0);
 
@@ -392,28 +391,23 @@ vertical(vertical)
 	slider->setMinimum(0);
 	slider->setMaximum(100);
 
-	bool muted = obs_source_muted(source);
+	bool muted = false; // will have to create setting for muting a track
 	mute->setChecked(muted);
 	mute->setAccessibleName(QTStr("VolControl.Mute").arg(trackName));
 	obs_fader_add_callback(obs_fader, OBSVolumeChanged, this);
 	obs_volmeter_add_callback(obs_volmeter, OBSVolumeLevel, this);
 
-	signal_handler_connect(obs_source_get_signal_handler(source),
-			"mute", OBSVolumeMuted, this);
+	//signal_handler_connect(obs_source_get_signal_handler(source),
+	//		"mute", OBSVolumeMuted, this);
 
 	QWidget::connect(slider, SIGNAL(valueChanged(int)),
 			this, SLOT(SliderChanged(int)));
 	QWidget::connect(mute, SIGNAL(clicked(bool)),
 			this, SLOT(SetMuted(bool)));
 
-	obs_fader_attach_float(obs_fader, vol);
-	/*
-	obs_volumeter_attach_float(obs_fader, vol);
-	*/
-	/*
-	obs_fader_attach_source(obs_fader, source);
-	obs_volmeter_attach_source(obs_volmeter, source);
-	*/
+	obs_fader_attach_float(obs_fader, vol, trackIndex);
+	obs_volmeter_attach_float(obs_volmeter, vol, trackIndex);
+
 	QString styleName = slider->style()->objectName();
 	QStyle *style;
 	style = QStyleFactory::create(styleName);
