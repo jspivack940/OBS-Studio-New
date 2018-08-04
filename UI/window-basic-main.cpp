@@ -418,7 +418,7 @@ void OBSBasic::UpdateVolumeControlsDecayRate()
 
 void OBSBasic::UpdateMasterVolumeControlsDecayRate() {
 	double meterDecayRate = config_get_double(basicConfig, "Audio",
-		"MasterMeterDecayRate");
+		"MeterDecayRate");
 
 	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++)
 		master_volumes[i]->SetMeterDecayRate(meterDecayRate);
@@ -448,7 +448,7 @@ void OBSBasic::UpdateVolumeControlsPeakMeterType()
 
 void OBSBasic::UpdateMasterVolumeControlsPeakMeterType() {
 	uint64_t peakMeterTypeIdx = config_get_uint(basicConfig, "Audio",
-		"MasterPeakMeterType");
+		"PeakMeterType");
 
 	enum obs_peak_meter_type peakMeterType = GetPeakMeterType(
 			peakMeterTypeIdx);
@@ -2830,9 +2830,11 @@ void OBSBasic::StackedMasterMixerAreaContextMenuRequested() {
 void OBSBasic::ToggleMixerLayout(bool vertical, bool isMaster)
 {
 	if (vertical && isMaster) {
+		InitAudioMaster();
 		ui->stackedMasterMixerArea->setMinimumSize(180, 220);
 		ui->stackedMasterMixerArea->setCurrentIndex(1);
 	} else if (!vertical && isMaster) {
+		InitAudioMaster();
 		ui->stackedMasterMixerArea->setMinimumSize(220, 0);
 		ui->stackedMasterMixerArea->setCurrentIndex(0);
 	} else if (vertical && !isMaster) {
@@ -2869,18 +2871,8 @@ void OBSBasic::ToggleMasterVolControlLayout() {
 		"VerticalMasterVolControl");
 	config_set_bool(GetGlobalConfig(), "BasicWindow", "VerticalMasterVolControl",
 		vertical);
+	ClearMasterVolumeControls();
 	ToggleMixerLayout(vertical, true);
-
-	// We need to store it so we can delete current and then add
-	// at the right order
-	//vector<OBSSource> sources;
-	//for (size_t i = 0; i != volumes.size(); i++)
-	//	sources.emplace_back(volumes[i]->GetSource());
-
-	//ClearVolumeControls();
-
-	//for (const auto &source : sources)
-	//	ActivateAudioSource(source);
 }
 
 void OBSBasic::ActivateAudioSource(OBSSource source)

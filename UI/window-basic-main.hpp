@@ -206,7 +206,7 @@ private:
 	void          UpdateVolumeControlsPeakMeterType();
 	void          ClearVolumeControls();
 
-	void          UpdateMasterVolumeControlsDecayRate();
+	void          UpdateMasterVolumeControlsDecayRate();//needs to be added in basic settings; for now it's the same setting as meterDecayRate 
 	void          UpdateMasterVolumeControlsPeakMeterType();
 	void          ClearMasterVolumeControls();
 
