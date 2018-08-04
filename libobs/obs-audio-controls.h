@@ -178,9 +178,8 @@ EXPORT void obs_fader_detach_source(obs_fader_t *fader);
 /**
 * @brief Attach the fader to a float
 * @param vol pointer to the float
-* @param trackIndex index of the track (mixbus)
 */
-EXPORT bool obs_fader_attach_float(obs_fader_t *fader, float *vol, int trackIndex);
+EXPORT bool obs_fader_attach_float(obs_fader_t *fader, float *vol);
 
 typedef void (*obs_fader_changed_t)(void *param, float db);
 
@@ -232,14 +231,13 @@ EXPORT void obs_volmeter_detach_source(obs_volmeter_t *volmeter);
 * @brief Attach the volume meter to a float (track)
 * @param volmeter pointer to the volume meter object
 * @param vol pointer to the float
-* @param trackIndex index of the track (mixbus)
 * @return true on success
 *
 * When the volume meter is attached to a float it will start to listen to
 * volume updates on the float and after preparing the data emit its own
 * signal.
 */
-EXPORT bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol, int trackIndex);
+EXPORT bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol);
 
 /**
  * @brief Set the peak meter type for the volume meter

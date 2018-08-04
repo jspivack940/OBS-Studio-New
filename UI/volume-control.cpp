@@ -405,8 +405,8 @@ vertical(vertical)
 	QWidget::connect(mute, SIGNAL(clicked(bool)),
 			this, SLOT(SetMuted(bool)));
 
-	obs_fader_attach_float(obs_fader, vol, trackIndex);
-	obs_volmeter_attach_float(obs_volmeter, vol, trackIndex);
+	obs_fader_attach_float(obs_fader, vol);
+	obs_volmeter_attach_float(obs_volmeter, vol);
 
 	QString styleName = slider->style()->objectName();
 	QStyle *style;
