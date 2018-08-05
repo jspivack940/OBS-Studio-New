@@ -1167,12 +1167,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_uint  (basicConfig, "AdvOut", "Track4Bitrate", 160);
 	config_set_default_uint  (basicConfig, "AdvOut", "Track5Bitrate", 160);
 	config_set_default_uint  (basicConfig, "AdvOut", "Track6Bitrate", 160);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track1Hidden", false);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track2Hidden", false);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track3Hidden", false);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track4Hidden", false);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track5Hidden", false);
-	config_set_default_bool  (basicConfig, "AdvOut", "Track6Hidden", false);
+
 	config_set_default_bool  (basicConfig, "AdvOut", "RecRB", false);
 	config_set_default_uint  (basicConfig, "AdvOut", "RecRBTime", 20);
 	config_set_default_int   (basicConfig, "AdvOut", "RecRBSize", 512);
@@ -2483,7 +2478,7 @@ static inline bool TrackMixerHidden(int track_index) {
 	OBSBasic *main =
 		reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
 	std::string hidden_track = "Track" + std::to_string(track_index + 1) + "Hidden";
-	bool hidden = config_get_bool(main->Config(), "AdvOut", hidden_track.c_str());
+	bool hidden = config_get_bool(GetGlobalConfig(), "BasicWindow", hidden_track.c_str());
 	
 	return hidden;
 }
@@ -2499,7 +2494,7 @@ static inline void SetTrackMixerHidden(int track_index, bool hidden) {
 	OBSBasic *main =
 		reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
 	std::string hidden_track = "Track" + std::to_string(track_index + 1) + "Hidden";
-	config_set_bool(main->Config(), "AdvOut", hidden_track.c_str(), hidden);
+	config_set_bool(GetGlobalConfig(), "BasicWindow", hidden_track.c_str(), hidden);
 }
 
 void OBSBasic::GetAudioSourceFilters()
@@ -2536,14 +2531,8 @@ void OBSBasic::HideMasterAudioControl() {
 	QAction *action = reinterpret_cast<QAction*>(sender());
 	VolControl *vol = action->property("volControl").value<VolControl*>();
 	vol->hide();
-	/*
 	int track_index = vol->GetTrack();
-
-	if (!TrackMixerHidden(track_index)) {
-		SetTrackMixerHidden(track_index, true);
-		master_volumes[track_index]->hide();
-	}
-	*/
+	SetTrackMixerHidden(track_index, true);
 }
 
 void OBSBasic::UnhideAllAudioControls()
@@ -2571,9 +2560,12 @@ void OBSBasic::UnhideAllAudioControls()
 }
 
 void OBSBasic::UnhideAllMasterAudioControls() {
-	for (auto volume : master_volumes) {
-		volume->show();
+	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
+		std::string hidden_track = "Track" + std::to_string(i + 1) + "Hidden";
+		config_set_bool(GetGlobalConfig(), "BasicWindow", hidden_track.c_str(), false);
+		master_volumes[i]->show();
 	}
+
 }
 
 void OBSBasic::ToggleHideMixer()
@@ -2975,13 +2967,15 @@ void OBSBasic::InitAudioMaster() {
 	obs_volmeter_t **meters = (obs_volmeter_t **)obs_audio_mix_meters();
 	obs_fader_t **faders = (obs_fader_t **)obs_audio_mix_faders();
 	bool *muted = obs_audio_mix_muted();
-	//float *tracks[MAX_AUDIO_MIXES];
 	VolControl *vol[MAX_AUDIO_MIXES];
+	bool hidden[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
-		//tracks[i] = new float;
 		vol[i] = new VolControl(&mixes[i], &muted[i], true, vertical, i);
 		meters[i] = vol[i]->GetMeter();
 		faders[i] = vol[i]->GetFader();
+		std::string hidden_track = "Track" + std::to_string(i + 1) + "Hidden";
+		hidden[i] = config_get_bool(GetGlobalConfig(), "BasicWindow", hidden_track.c_str());
+		vol[i]->setVisible(!hidden[i]);
 	}
 	obs_audio_mix_unlock();
 

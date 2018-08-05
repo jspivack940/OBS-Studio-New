@@ -269,6 +269,7 @@ public:
 	inline obs_source_t *GetSource() const {return source;}
 	inline obs_fader_t *GetFader() {return obs_fader;}
 	inline obs_volmeter_t *GetMeter() {return obs_volmeter;}
+	inline int GetTrack() const { return track_index; }
 
 	QString GetName() const;
 	void SetName(const QString &newName);

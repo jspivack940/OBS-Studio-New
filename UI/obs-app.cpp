@@ -426,6 +426,13 @@ bool OBSApp::InitGlobalConfigDefaults()
 	config_set_default_bool(globalConfig, "BasicWindow",
 			"VerticalMasterVolControl", true);
 
+	config_set_default_bool(globalConfig, "BasicWindow", "Track1Hidden", false);
+	config_set_default_bool(globalConfig, "BasicWindow", "Track2Hidden", false);
+	config_set_default_bool(globalConfig, "BasicWindow", "Track3Hidden", false);
+	config_set_default_bool(globalConfig, "BasicWindow", "Track4Hidden", false);
+	config_set_default_bool(globalConfig, "BasicWindow", "Track5Hidden", false);
+	config_set_default_bool(globalConfig, "BasicWindow", "Track6Hidden", false);
+
 	config_set_default_bool(globalConfig, "BasicWindow",
 			"MultiviewMouseSwitch", true);
 
