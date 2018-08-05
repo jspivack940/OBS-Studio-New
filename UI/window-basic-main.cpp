@@ -475,9 +475,9 @@ void OBSBasic::ClearMasterVolumeControls() {
 		meters[i] = nullptr;
 		faders[i] = nullptr;
 	}
-	obs_audio_mix_unlock();
 	for (VolControl *vol : master_volumes)
 		delete vol;
+	obs_audio_mix_unlock();
 
 	master_volumes.clear();
 }
@@ -2075,6 +2075,8 @@ OBSBasic::~OBSBasic()
 	 * can be freed, and we have no control over the destruction order of
 	 * the Qt UI stuff, so we have to manually clear any references to
 	 * libobs. */
+	ClearMasterVolumeControls();
+
 	delete cpuUsageTimer;
 	os_cpu_usage_info_destroy(cpuUsageInfo);
 
