@@ -2838,7 +2838,7 @@ void OBSBasic::StackedMasterMixerAreaContextMenuRequested() {
 	/* ------------------- */
 
 	connect(&unhideAllAction, &QAction::triggered,
-		this, &OBSBasic::UnhideAllAudioControls,
+		this, &OBSBasic::UnhideAllMasterAudioControls,
 		Qt::DirectConnection);
 
 	connect(&advPropAction, &QAction::triggered,
