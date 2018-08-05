@@ -2533,12 +2533,15 @@ void OBSBasic::HideAudioControl()
 void OBSBasic::HideMasterAudioControl() {
 	QAction *action = reinterpret_cast<QAction*>(sender());
 	VolControl *vol = action->property("volControl").value<VolControl*>();
+	vol->hide();
+	/*
 	int track_index = vol->GetTrack();
 
 	if (!TrackMixerHidden(track_index)) {
 		SetTrackMixerHidden(track_index, true);
 		master_volumes[track_index]->hide();
 	}
+	*/
 }
 
 void OBSBasic::UnhideAllAudioControls()
