@@ -230,7 +230,6 @@ private:
 
 	void 	      OnFirstLoad();
 
-	void          InitAudioMaster();
 	OBSSceneItem  GetSceneItem(QListWidgetItem *item);
 	OBSSceneItem  GetCurrentSceneItem();
 
@@ -507,7 +506,7 @@ private:
 public:
 	OBSSource GetProgramSource();
 	OBSScene GetCurrentScene();
-
+	void     InitAudioMaster();
 	void SysTrayNotify(const QString &text, QSystemTrayIcon::MessageIcon n);
 
 	inline OBSSource GetCurrentSceneSource()

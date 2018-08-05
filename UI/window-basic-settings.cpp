@@ -3089,6 +3089,17 @@ void OBSBasicSettings::SaveOutputSettings()
 	SaveEdit(ui->advOutTrack4Name, "AdvOut", "Track4Name");
 	SaveEdit(ui->advOutTrack5Name, "AdvOut", "Track5Name");
 	SaveEdit(ui->advOutTrack6Name, "AdvOut", "Track6Name");
+	bool track_name_changed = WidgetChanged(ui->advOutTrack1Name) ||
+			WidgetChanged(ui->advOutTrack2Name) ||
+			WidgetChanged(ui->advOutTrack3Name) ||
+			WidgetChanged(ui->advOutTrack4Name) ||
+			WidgetChanged(ui->advOutTrack5Name) ||
+			WidgetChanged(ui->advOutTrack6Name);
+
+	if (track_name_changed) {
+		OBSBasic *main = reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
+		main->InitAudioMaster();
+	}
 
 	SaveCheckBox(ui->advReplayBuf, "AdvOut", "RecRB");
 	SaveSpinBox(ui->advRBSecMax, "AdvOut", "RecRBTime");
