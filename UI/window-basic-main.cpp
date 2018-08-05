@@ -1157,7 +1157,12 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_uint  (basicConfig, "AdvOut", "Track4Bitrate", 160);
 	config_set_default_uint  (basicConfig, "AdvOut", "Track5Bitrate", 160);
 	config_set_default_uint  (basicConfig, "AdvOut", "Track6Bitrate", 160);
-
+	config_set_default_bool  (basicConfig, "AdvOut", "Track1Hidden", false);
+	config_set_default_bool  (basicConfig, "AdvOut", "Track2Hidden", false);
+	config_set_default_bool  (basicConfig, "AdvOut", "Track3Hidden", false);
+	config_set_default_bool  (basicConfig, "AdvOut", "Track4Hidden", false);
+	config_set_default_bool  (basicConfig, "AdvOut", "Track5Hidden", false);
+	config_set_default_bool  (basicConfig, "AdvOut", "Track6Hidden", false);
 	config_set_default_bool  (basicConfig, "AdvOut", "RecRB", false);
 	config_set_default_uint  (basicConfig, "AdvOut", "RecRBTime", 20);
 	config_set_default_int   (basicConfig, "AdvOut", "RecRBSize", 512);
@@ -2462,11 +2467,27 @@ static inline bool SourceMixerHidden(obs_source_t *source)
 	return hidden;
 }
 
+static inline bool TrackMixerHidden(int track_index) {
+	OBSBasic *main =
+		reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
+	std::string hidden_track = "Track" + std::to_string(track_index + 1) + "Hidden";
+	bool hidden = config_get_bool(main->Config(), "AdvOut", hidden_track.c_str());
+	
+	return hidden;
+}
+
 static inline void SetSourceMixerHidden(obs_source_t *source, bool hidden)
 {
 	obs_data_t *priv_settings = obs_source_get_private_settings(source);
 	obs_data_set_bool(priv_settings, "mixer_hidden", hidden);
 	obs_data_release(priv_settings);
+}
+
+static inline void SetTrackMixerHidden(int track_index, bool hidden) {
+	OBSBasic *main =
+		reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
+	std::string hidden_track = "Track" + std::to_string(track_index + 1) + "Hidden";
+	config_set_bool(main->Config(), "AdvOut", hidden_track.c_str(), hidden);
 }
 
 void OBSBasic::GetAudioSourceFilters()
@@ -2502,11 +2523,12 @@ void OBSBasic::HideAudioControl()
 void OBSBasic::HideMasterAudioControl() {
 	QAction *action = reinterpret_cast<QAction*>(sender());
 	VolControl *vol = action->property("volControl").value<VolControl*>();
+	int track_index = vol->GetTrack();
 
-	//if (!SourceMixerHidden(source)) {
-	//	SetSourceMixerHidden(source, true);
-	//	DeactivateAudioSource(source);
-	//}
+	if (!TrackMixerHidden(track_index)) {
+		SetTrackMixerHidden(track_index, true);
+		master_volumes[track_index]->hide();
+	}
 }
 
 void OBSBasic::UnhideAllAudioControls()
@@ -2531,6 +2553,12 @@ void OBSBasic::UnhideAllAudioControls()
 	};
 
 	obs_enum_sources(PreEnum, &UnhideAudioMixer);
+}
+
+void OBSBasic::UnhideAllMasterAudioControls() {
+	for (auto volume : master_volumes) {
+		volume->show();
+	}
 }
 
 void OBSBasic::ToggleHideMixer()
@@ -2612,7 +2640,7 @@ void OBSBasic::MasterVolControlContextMenu()
 			this, &OBSBasic::HideMasterAudioControl,
 			Qt::DirectConnection);
 	connect(&unhideAllAction, &QAction::triggered,
-			this, &OBSBasic::UnhideAllAudioControls,
+			this, &OBSBasic::UnhideAllMasterAudioControls,
 			Qt::DirectConnection);
 	//connect(&mixerRenameAction, &QAction::triggered,
 	//		this, &OBSBasic::MixerRenameSource,
@@ -2871,7 +2899,6 @@ void OBSBasic::ToggleMasterVolControlLayout() {
 		"VerticalMasterVolControl");
 	config_set_bool(GetGlobalConfig(), "BasicWindow", "VerticalMasterVolControl",
 		vertical);
-	ClearMasterVolumeControls();
 	ToggleMixerLayout(vertical, true);
 }
 
@@ -2925,8 +2952,9 @@ void OBSBasic::ActivateAudioSource(OBSSource source)
 
 void OBSBasic::InitAudioMaster() {
 
+	ClearMasterVolumeControls();
 	bool vertical = config_get_bool(GetGlobalConfig(), "BasicWindow",
-		"VerticalMasterVolControl");
+			"VerticalMasterVolControl");
 	float *mixes = obs_audio_mix_volumes();
 	//float *tracks[MAX_AUDIO_MIXES];
 	VolControl *vol[MAX_AUDIO_MIXES];
@@ -2936,10 +2964,10 @@ void OBSBasic::InitAudioMaster() {
 	}
 
 	double meterDecayRate = config_get_double(basicConfig, "Audio",
-		"MasterMeterDecayRate");
+			"MeterDecayRate");
 
 	uint32_t peakMeterTypeIdx = config_get_uint(basicConfig, "Audio",
-		"MasterPeakMeterType");
+			"PeakMeterType");
 
 	enum obs_peak_meter_type peakMeterType;
 	switch (peakMeterTypeIdx) {

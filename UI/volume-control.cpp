@@ -275,6 +275,7 @@ vertical(vertical)
 	nameLabel = new QLabel();
 	volLabel = new QLabel();
 	mute = new MuteCheckBox();
+	track_index = trackIndex;
 
 	OBSBasic *main = reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
 

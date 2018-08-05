@@ -465,7 +465,7 @@ private slots:
 	void HideAudioControl();
 	void UnhideAllAudioControls();
 	void HideMasterAudioControl();
-//	void UnhideAllMasterAudioControls();
+	void UnhideAllMasterAudioControls();
 	void ToggleHideMixer();
 
 	void MixerRenameSource();
