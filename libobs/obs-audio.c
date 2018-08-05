@@ -451,21 +451,26 @@ bool audio_callback(void *param,
 			pthread_mutex_unlock(&source->audio_buf_mutex);
 		}
 
+		struct audio_data audio_out = { 0 };
+		for (size_t j = 0; j < channels; j++) {
+			audio_out.data[j] = bmalloc(MAX_AUDIO_CHANNELS * AUDIO_OUTPUT_FRAMES * sizeof(float));
+		}
+		audio_out.frames = AUDIO_OUTPUT_FRAMES;
+		audio_out.timestamp = start_ts_in;
+
 		for (size_t i = 0; i < MAX_AUDIO_MIXES; i++) {
-			struct audio_data audio_out = { 0 };
 			size_t j;
 			for (j = 0; j < channels; j++) {
-				audio_out.data[j] = bmemdup(mixes[i].data[j], MAX_AUDIO_CHANNELS * AUDIO_OUTPUT_FRAMES * sizeof(float));
-				audio_out.frames = AUDIO_OUTPUT_FRAMES;
-				audio_out.timestamp = start_ts_in;
+				memcpy(audio_out.data[j], mixes[i].data[j], MAX_AUDIO_CHANNELS * AUDIO_OUTPUT_FRAMES * sizeof(float));
 			}
 			obs_audio_mix_lock();
 			volmeter_data_received(data->audio_mixes.meters[i],
 					&audio_out, data->audio_mixes.muted[i]);
 			obs_audio_mix_unlock();
-			for (j = 0; j < channels; j++) {
-				bfree(audio_out.data[j]);
-			}
+		}
+
+		for (size_t j = 0; j < channels; j++) {
+			bfree(audio_out.data[j]);
 		}
 	}
 
