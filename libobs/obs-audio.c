@@ -79,6 +79,20 @@ static inline void mix_audio(struct audio_output_data *mixes,
 	}
 }
 
+static inline void process_gain(struct audio_output_data *mixes, size_t channels, float *vol_data, bool *muted)
+{
+	size_t total_floats = AUDIO_OUTPUT_FRAMES;
+	for (size_t mix_idx = 0; mix_idx < MAX_AUDIO_MIXES; mix_idx++) {
+		for (size_t ch = 0; ch < channels; ch++) {
+			register float *mix = mixes[mix_idx].data[ch];
+			register float *end = mix + total_floats;
+			float gain = muted[mix_idx] ? 0.0f : vol_data[mix_idx];
+			while (mix < end)
+				*(mix++) *= gain;
+		}
+	}
+}
+
 static void ignore_audio(obs_source_t *source, size_t channels,
 		size_t sample_rate)
 {
@@ -474,6 +488,10 @@ bool audio_callback(void *param,
 
 		for (size_t j = 0; j < channels; j++)
 			bfree(audio_out.data[j]);
+
+		/* Process Gain */
+		process_gain(mixes, channels, &data->audio_mixes.volume[0],
+				&data->audio_mixes.muted[0]);
 	}
 
 	/* ------------------------------------------------ */
