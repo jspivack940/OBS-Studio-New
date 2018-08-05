@@ -47,7 +47,7 @@ struct obs_fader {
 	obs_fader_conversion_t def_to_db;
 	obs_fader_conversion_t db_to_def;
 	obs_source_t           *source;
-	bool                   isTrack;
+	bool                   is_track;
 	float                  *vol;
 	enum obs_fader_type    type;
 	float                  max_db;
@@ -67,7 +67,7 @@ struct meter_cb {
 struct obs_volmeter {
 	pthread_mutex_t             mutex;
 	obs_source_t                *source;
-	bool                        isTrack;
+	bool                        is_track;
 	enum obs_fader_type         type;
 	float                       cur_db;
 
@@ -438,6 +438,7 @@ static void volmeter_process_peak(obs_volmeter_t *volmeter,
 		if (!samples) {
 			continue;
 		}
+		
 		if (((uintptr_t)samples & 0xf) > 0) {
 			printf("Audio plane %i is not aligned %p skipping "
 					"peak volume measurement.\n",
@@ -446,7 +447,7 @@ static void volmeter_process_peak(obs_volmeter_t *volmeter,
 			channel_nr++;
 			continue;
 		}
-
+		
 		/* volmeter->prev_samples may not be aligned to 16 bytes;
 		 * use unaligned load. */
 		__m128 previous_samples = _mm_loadu_ps(
@@ -719,7 +720,7 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 	pthread_mutex_lock(&fader->mutex);
 
 	fader->source = source;
-	fader->isTrack = false;
+	fader->is_track = false;
 	fader->cur_db = mul_to_db(vol);
 
 	pthread_mutex_unlock(&fader->mutex);
@@ -734,7 +735,7 @@ bool obs_fader_attach_float(obs_fader_t *fader, float *vol)
 
 	pthread_mutex_lock(&fader->mutex);
 	fader->vol = vol;
-	fader->isTrack = true;
+	fader->is_track = true;
 	fader->cur_db = mul_to_db(*vol);
 	pthread_mutex_unlock(&fader->mutex);
 
@@ -752,7 +753,7 @@ void obs_fader_detach_source(obs_fader_t *fader)
 	pthread_mutex_lock(&fader->mutex);
 	source = fader->source;
 	fader->source = NULL;
-	fader->isTrack = false;
+	fader->is_track = false;
 	pthread_mutex_unlock(&fader->mutex);
 
 	if (!source)
@@ -850,7 +851,7 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 	pthread_mutex_lock(&volmeter->mutex);
 
 	volmeter->source = source;
-	volmeter->isTrack = false;
+	volmeter->is_track = false;
 	volmeter->cur_db = mul_to_db(vol);
 
 	pthread_mutex_unlock(&volmeter->mutex);
@@ -864,7 +865,7 @@ bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol) {
 		return false;
 
 	pthread_mutex_lock(&volmeter->mutex);
-	volmeter->isTrack = true;
+	volmeter->is_track = true;
 	volmeter->source = NULL;
 	volmeter->cur_db = mul_to_db(*vol);
 	pthread_mutex_unlock(&volmeter->mutex);
@@ -883,7 +884,7 @@ void obs_volmeter_detach_source(obs_volmeter_t *volmeter)
 	pthread_mutex_lock(&volmeter->mutex);
 	source = volmeter->source;
 	volmeter->source = NULL;
-	volmeter->isTrack = false;
+	volmeter->is_track = false;
 	pthread_mutex_unlock(&volmeter->mutex);
 
 	if (!source)

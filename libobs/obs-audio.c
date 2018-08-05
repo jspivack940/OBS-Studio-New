@@ -455,7 +455,7 @@ bool audio_callback(void *param,
 			struct audio_data audio_out = { 0 };
 			size_t j;
 			for (j = 0; j < channels; j++) {
-				audio_out.data[j] = (uint8_t*)mixes[i].data[j];
+				audio_out.data[j] = bmemdup(mixes[i].data[j], MAX_AUDIO_CHANNELS * AUDIO_OUTPUT_FRAMES * sizeof(float));
 				audio_out.frames = AUDIO_OUTPUT_FRAMES;
 				audio_out.timestamp = start_ts_in;
 			}
@@ -463,6 +463,9 @@ bool audio_callback(void *param,
 			volmeter_data_received(data->audio_mixes.meters[i],
 					&audio_out, data->audio_mixes.muted[i]);
 			obs_audio_mix_unlock();
+			for (j = 0; j < channels; j++) {
+				bfree(audio_out.data[j]);
+			}
 		}
 	}
 
