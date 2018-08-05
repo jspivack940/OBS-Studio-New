@@ -562,6 +562,8 @@ static bool obs_init_data(void)
 		goto fail;
 	if (pthread_mutex_init(&obs->data.draw_callbacks_mutex, &attr) != 0)
 		goto fail;
+	if (pthread_mutex_init(&obs->data.mixers_mutex, &attr) != 0)
+		goto fail;
 	if (!obs_view_init(&data->main_view))
 		goto fail;
 
@@ -1330,14 +1332,27 @@ void obs_enum_sources(bool (*enum_proc)(void*, obs_source_t*), void *param)
 	pthread_mutex_unlock(&obs->data.sources_mutex);
 }
 
+
+void obs_audio_mix_lock()
+{
+	pthread_mutex_lock(&obs->data.mixers_mutex);
+}
+
+void obs_audio_mix_unlock()
+{
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
+}
+
+
 struct obs_audio_mixes *obs_audio_mixes()
 {
 	struct obs_audio_mixes *mixes;
 	if (!obs)
 		return NULL;
-	/* pthread things should we need them */
+
+	pthread_mutex_lock(&obs->data.mixers_mutex);
 	mixes = &obs->data.audio_mixes;
-	/* pthread thigns should we need them */
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
 	return mixes;
 }
 
@@ -1347,7 +1362,9 @@ float *obs_audio_mix_volumes()
 	if (!obs)
 		return NULL;
 
+	pthread_mutex_lock(&obs->data.mixers_mutex);
 	volumes = &obs->data.audio_mixes.volume[0];
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
 
 	return volumes;
 }
@@ -1358,8 +1375,10 @@ void *obs_audio_mix_meters()
 	if (!obs)
 		return NULL;
 
+	pthread_mutex_lock(&obs->data.mixers_mutex);
 	meters = &obs->data.audio_mixes.meters[0];
-	
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
+
 	return meters;
 }
 
@@ -1369,7 +1388,9 @@ void *obs_audio_mix_faders()
 	if (!obs)
 		return NULL;
 
+	pthread_mutex_lock(&obs->data.mixers_mutex);
 	faders = &obs->data.audio_mixes.faders[0];
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
 
 	return faders;
 }
@@ -1380,7 +1401,9 @@ bool *obs_audio_mix_muted()
 	if (!obs)
 		return NULL;
 
+	pthread_mutex_lock(&obs->data.mixers_mutex);
 	muted = &obs->data.audio_mixes.muted[0];
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
 	return muted;
 }
 

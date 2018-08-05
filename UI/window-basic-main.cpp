@@ -466,6 +466,16 @@ void OBSBasic::ClearVolumeControls()
 }
 
 void OBSBasic::ClearMasterVolumeControls() {
+	float *mixes = obs_audio_mix_volumes();
+	obs_audio_mix_lock();
+	obs_volmeter_t **meters = (obs_volmeter_t **)obs_audio_mix_meters();
+	obs_fader_t **faders = (obs_fader_t **)obs_audio_mix_faders();
+	VolControl *vol[MAX_AUDIO_MIXES];
+	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
+		meters[i] = nullptr;
+		faders[i] = nullptr;
+	}
+	obs_audio_mix_unlock();
 	for (VolControl *vol : master_volumes)
 		delete vol;
 
@@ -2955,10 +2965,11 @@ void OBSBasic::InitAudioMaster() {
 	ClearMasterVolumeControls();
 	bool vertical = config_get_bool(GetGlobalConfig(), "BasicWindow",
 			"VerticalMasterVolControl");
+	obs_audio_mix_lock();
 	float *mixes = obs_audio_mix_volumes();
 	obs_volmeter_t **meters = (obs_volmeter_t **)obs_audio_mix_meters();
 	obs_fader_t **faders = (obs_fader_t **)obs_audio_mix_faders();
-	bool *muted = obs_audio_mix_muted();
+	//bool *muted = obs_audio_mix_muted();
 	//float *tracks[MAX_AUDIO_MIXES];
 	VolControl *vol[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
@@ -2967,6 +2978,7 @@ void OBSBasic::InitAudioMaster() {
 		meters[i] = vol[i]->GetMeter();
 		faders[i] = vol[i]->GetFader();
 	}
+	obs_audio_mix_unlock();
 
 	double meterDecayRate = config_get_double(basicConfig, "Audio",
 			"MeterDecayRate");
