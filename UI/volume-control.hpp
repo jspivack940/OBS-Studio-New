@@ -231,6 +231,7 @@ private:
 	VolumeMeter     *volMeter;
 	QSlider         *slider;
 	MuteCheckBox    *mute;
+	bool            *mutePtr;
 	QPushButton     *config = nullptr;
 	float           levelTotal;
 	float           levelCount;
@@ -261,8 +262,8 @@ signals:
 public:
 	explicit VolControl(OBSSource source, bool showConfig = false,
 			bool vertical = false);
-	explicit VolControl(float *vol, int trackIndex, bool showConfig = false,
-			bool vertical = true);
+	explicit VolControl(float *vol, bool *mute, bool showConfig = false,
+			bool vertical = true, int trackIndex = -1);
 	~VolControl();
 
 	inline obs_source_t *GetSource() const {return source;}

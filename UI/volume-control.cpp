@@ -56,13 +56,16 @@ void VolControl::VolumeChanged()
 
 void VolControl::VolumeMuted(bool muted)
 {
-	if (mute->isChecked() != muted)
+	if (mute->isChecked() != muted) {
 		mute->setChecked(muted);
+	}
 }
 
 void VolControl::SetMuted(bool checked)
 {
 	obs_source_set_muted(source, checked);
+	if (mutePtr)
+		*mutePtr = checked;
 }
 
 void VolControl::SliderChanged(int vol)
@@ -119,7 +122,8 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		levelCount    (0.0f),
 		obs_fader     (obs_fader_create(OBS_FADER_CUBIC)),
 		obs_volmeter  (obs_volmeter_create(OBS_FADER_LOG)),
-		vertical      (vertical)
+		vertical      (vertical),
+		mutePtr       (nullptr)
 {
 	nameLabel = new QLabel();
 	volLabel  = new QLabel();
@@ -264,13 +268,14 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 	VolumeChanged();
 }
 
-VolControl::VolControl(float *vol, int trackIndex, bool showConfig, bool vertical)
-: source(nullptr),
-levelTotal(0.0f),
-levelCount(0.0f),
-obs_fader(obs_fader_create(OBS_FADER_CUBIC)),
-obs_volmeter(obs_volmeter_create(OBS_FADER_LOG)),
-vertical(vertical)
+VolControl::VolControl(float *vol, bool *mutePtr, bool showConfig, bool vertical, int trackIndex)
+		: source(nullptr),
+		levelTotal(0.0f),
+		levelCount(0.0f),
+		obs_fader(obs_fader_create(OBS_FADER_CUBIC)),
+		obs_volmeter(obs_volmeter_create(OBS_FADER_LOG)),
+		vertical(vertical),
+		mutePtr(mutePtr)
 {
 	nameLabel = new QLabel();
 	volLabel = new QLabel();
