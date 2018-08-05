@@ -80,12 +80,13 @@ void VolControl::updateText()
 			.append(" dB");
 	volLabel->setText(db);
 
-	bool muted = source !=NULL ? obs_source_muted(source) : false;
+	bool muted = source != nullptr ? obs_source_muted(source) : false;
 	const char *accTextLookup = muted
 		? "VolControl.SliderMuted"
 		: "VolControl.SliderUnmuted";
 
-	QString sourceName = obs_source_get_name(source);
+	QString sourceName = source != nullptr ? obs_source_get_name(source) :
+			objectName();
 	QString accText = QTStr(accTextLookup).arg(sourceName, db);
 
 	slider->setAccessibleName(accText);
