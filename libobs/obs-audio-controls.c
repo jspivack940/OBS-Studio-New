@@ -727,7 +727,7 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 	return true;
 }
 
-bool obs_fader_attach_float(obs_fader_t *fader, float *vol, int trackIndex)
+bool obs_fader_attach_float(obs_fader_t *fader, float *vol)
 {
 	if (!fader || !vol)
 		return false;
