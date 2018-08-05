@@ -737,7 +737,8 @@ bool obs_fader_attach_float(obs_fader_t *fader, float *vol)
 	fader->isTrack = true;
 	fader->cur_db = mul_to_db(*vol);
 	pthread_mutex_unlock(&fader->mutex);
-	
+
+	return true;
 }
 
 void obs_fader_detach_source(obs_fader_t *fader)
