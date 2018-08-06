@@ -2975,7 +2975,6 @@ void OBSBasic::InitAudioMaster() {
 		faders[i] = vol[i]->GetFader();
 		std::string hidden_track = "Track" + std::to_string(i + 1) + "Hidden";
 		hidden[i] = config_get_bool(GetGlobalConfig(), "BasicWindow", hidden_track.c_str());
-		vol[i]->setVisible(!hidden[i]);
 	}
 	obs_audio_mix_unlock();
 
@@ -3011,13 +3010,16 @@ void OBSBasic::InitAudioMaster() {
 		InsertQObjectByName(master_volumes, vol[i]);
 	}
 
-	for (auto volume : master_volumes) {
+	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
 		if (vertical)
-			ui->vMasterVolControlLayout->addWidget(volume);
+			ui->vMasterVolControlLayout->addWidget(master_volumes[i]);
 		else
-			ui->hMasterVolControlLayout->addWidget(volume);
+			ui->hMasterVolControlLayout->addWidget(master_volumes[i]);
 	}
 
+	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
+		vol[i]->setVisible(!hidden[i]);
+	}
 }
 
 void OBSBasic::DeactivateAudioSource(OBSSource source)
