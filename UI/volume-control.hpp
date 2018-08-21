@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QMutex>
 #include <QList>
+#include <QCheckBox>
 
 class QPushButton;
 class VolumeMeterTimer;
@@ -219,17 +220,27 @@ protected:
 class QLabel;
 class QSlider;
 class MuteCheckBox;
+class StreamCheckBox : public QCheckBox {
+	Q_OBJECT
+};
+class RecCheckBox : public QCheckBox {
+	Q_OBJECT
+};
 
 class VolControl : public QWidget {
 	Q_OBJECT
 
 private:
 	OBSSource source;
+	int             track_index;
 	QLabel          *nameLabel;
 	QLabel          *volLabel;
 	VolumeMeter     *volMeter;
 	QSlider         *slider;
 	MuteCheckBox    *mute;
+	StreamCheckBox  *stream;
+	RecCheckBox     *rec;
+	bool            *mutePtr;
 	QPushButton     *config = nullptr;
 	float           levelTotal;
 	float           levelCount;
@@ -245,25 +256,35 @@ private:
 	static void OBSVolumeMuted(void *data, calldata_t *calldata);
 
 	void EmitConfigClicked();
+	std::vector<obs_source_t *> GetTrackSources();
 
 private slots:
-	void VolumeChanged();
 	void VolumeMuted(bool muted);
 
 	void SetMuted(bool checked);
+	void SetStream(bool checked);
+	void SetRec(bool checked);
+
 	void SliderChanged(int vol);
 	void updateText();
-
+public slots:
+	void VolumeChanged();
 signals:
 	void ConfigClicked();
 
 public:
 	explicit VolControl(OBSSource source, bool showConfig = false,
 			bool vertical = false);
+	explicit VolControl(float *vol, bool *mute, bool showConfig = false,
+			bool vertical = true, int trackIndex = -1);
 	~VolControl();
 
 	inline obs_source_t *GetSource() const {return source;}
-
+	inline obs_fader_t *GetFader() {return obs_fader;}
+	inline obs_volmeter_t *GetMeter() {return obs_volmeter;}
+	inline int GetTrack() const {return track_index;}
+	inline StreamCheckBox *GetStreamCheckbox() {return stream;}
+	inline RecCheckBox *GetRecCheckbox() {return rec;}
 	QString GetName() const;
 	void SetName(const QString &newName);
 

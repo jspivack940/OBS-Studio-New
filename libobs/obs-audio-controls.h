@@ -90,6 +90,15 @@ enum obs_peak_meter_type {
 };
 
 /**
+* @brief Update a volumeter's peaks
+* @param vptr pointer to the volumeter object
+* @param data pointer to the audio to process
+* @param muted whether the audio is muted
+*/
+EXPORT void volmeter_data_received(void *vptr,
+		const struct audio_data *data, bool muted);
+
+/**
  * @brief Create a fader
  * @param type the type of the fader
  * @return pointer to the fader object
@@ -175,6 +184,12 @@ EXPORT bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source);
  */
 EXPORT void obs_fader_detach_source(obs_fader_t *fader);
 
+/**
+* @brief Attach the fader to a float
+* @param vol pointer to the float
+*/
+EXPORT bool obs_fader_attach_float(obs_fader_t *fader, float *vol);
+
 typedef void (*obs_fader_changed_t)(void *param, float db);
 
 EXPORT void obs_fader_add_callback(obs_fader_t *fader,
@@ -220,6 +235,18 @@ EXPORT bool obs_volmeter_attach_source(obs_volmeter_t *volmeter,
  * @param volmeter pointer to the volume meter object
  */
 EXPORT void obs_volmeter_detach_source(obs_volmeter_t *volmeter);
+
+/**
+* @brief Attach the volume meter to a float (track)
+* @param volmeter pointer to the volume meter object
+* @param vol pointer to the float
+* @return true on success
+*
+* When the volume meter is attached to a float it will start to listen to
+* volume updates on the float and after preparing the data emit its own
+* signal.
+*/
+EXPORT bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol);
 
 /**
  * @brief Set the peak meter type for the volume meter

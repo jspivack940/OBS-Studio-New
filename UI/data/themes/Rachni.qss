@@ -761,6 +761,42 @@ MuteCheckBox::indicator:unchecked:disabled {
 	image: url(./Dark/unmute.png);
 }
 
+/***********************************/
+/* --- Master Mixer Checkboxes --- */
+/***********************************/
+StreamCheckBox {
+    outline: none;
+    margin-left: 7px; padding-left: 7px; padding-right: -4px;
+}
+
+StreamCheckBox[themeID="MacOnly"] {
+    margin-left: 7px; margin-right: 3px;
+}
+
+StreamCheckBox::indicator:checked {
+    image: url(:/res/images/streamON.png);
+}
+
+StreamCheckBox::indicator:unchecked {
+    image: url(:/res/images/streamOFF.png);
+}
+
+RecCheckBox {
+    outline: none;
+    margin-right: 5px; padding-right: 5px;
+}
+
+RecCheckBox[themeID="MacOnly"] {
+    margin-left: 5px; padding-left: 2px;
+}
+
+RecCheckBox::indicator:checked {
+    image: url(:/res/images/recON.png);
+}
+
+RecCheckBox::indicator:unchecked {
+    image: url(:/res/images/recOFF.png);
+}
 /****************************/
 /* --- Group Checkboxes --- */
 /****************************/

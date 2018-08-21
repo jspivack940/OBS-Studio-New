@@ -3925,12 +3925,8 @@ static void custom_audio_render(obs_source_t *source, uint32_t mixers,
 			audio_data.output[mix].data[ch] =
 				source->audio_output_buf[mix][ch];
 		}
-
-		if ((source->audio_mixers & mixers & (1 << mix)) != 0) {
-			memset(source->audio_output_buf[mix][0], 0,
-					sizeof(float) * AUDIO_OUTPUT_FRAMES *
-					channels);
-		}
+		memset(source->audio_output_buf[mix][0], 0,
+				sizeof(float) * AUDIO_OUTPUT_FRAMES * channels);
 	}
 
 	success = source->info.audio_render(source->context.data, &ts,
@@ -3940,19 +3936,6 @@ static void custom_audio_render(obs_source_t *source, uint32_t mixers,
 
 	if (!success || !source->audio_ts || !mixers)
 		return;
-
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
-		uint32_t mix_bit = 1 << mix;
-
-		if ((mixers & mix_bit) == 0)
-			continue;
-
-		if ((source->audio_mixers & mix_bit) == 0) {
-			memset(source->audio_output_buf[mix][0], 0,
-					sizeof(float) * AUDIO_OUTPUT_FRAMES *
-					channels);
-		}
-	}
 
 	apply_audio_volume(source, mixers, channels, sample_rate);
 }
@@ -3979,8 +3962,7 @@ static inline void process_audio_source_tick(obs_source_t *source,
 	for (size_t mix = 1; mix < MAX_AUDIO_MIXES; mix++) {
 		uint32_t mix_and_val = (1 << mix);
 
-		if ((source->audio_mixers & mix_and_val) == 0 ||
-		    (mixers & mix_and_val) == 0) {
+		if ((source->audio_mixers & mix_and_val) == 0) {
 			memset(source->audio_output_buf[mix][0],
 					0, size * channels);
 			continue;
@@ -3991,7 +3973,7 @@ static inline void process_audio_source_tick(obs_source_t *source,
 					source->audio_output_buf[0][ch], size);
 	}
 
-	if ((source->audio_mixers & 1) == 0 || (mixers & 1) == 0)
+	if ((source->audio_mixers & 1) == 0)
 		memset(source->audio_output_buf[0][0], 0,
 				size * channels);
 
