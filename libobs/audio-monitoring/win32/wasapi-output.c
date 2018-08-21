@@ -431,9 +431,9 @@ void audio_monitor_destroy(struct audio_monitor *monitor)
 	if (monitor) {
 		audio_monitor_free(monitor);
 
-		pthread_mutex_lock(&obs->audio.monitoring_mutex);
+//		pthread_mutex_lock(&obs->audio.monitoring_mutex);
 		da_erase_item(obs->audio.monitors, &monitor);
-		pthread_mutex_unlock(&obs->audio.monitoring_mutex);
+//		pthread_mutex_unlock(&obs->audio.monitoring_mutex);
 
 		bfree(monitor);
 	}
