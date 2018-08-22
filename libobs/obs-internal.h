@@ -316,6 +316,7 @@ struct obs_audio_mixes {
 	bool muted[MAX_AUDIO_MIXES];
 	struct obs_volumeter_t *meters[MAX_AUDIO_MIXES];
 	struct obs_fader_t *faders[MAX_AUDIO_MIXES];
+	struct obs_source_t *tracks[MAX_AUDIO_MIXES];
 };
 
 /* user sources, output channels, and displays */

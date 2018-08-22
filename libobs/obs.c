@@ -1407,6 +1407,18 @@ bool *obs_audio_mix_muted()
 	return muted;
 }
 
+void *obs_audio_mix_tracks()
+{
+	void *tracks;
+	if (!obs)
+		return NULL;
+
+	pthread_mutex_lock(&obs->data.mixers_mutex);
+	tracks = &obs->data.audio_mixes.tracks[0];
+	pthread_mutex_unlock(&obs->data.mixers_mutex);
+	return tracks;
+}
+
 static inline void obs_enum(void *pstart, pthread_mutex_t *mutex, void *proc,
 		void *param)
 {
@@ -1900,6 +1912,56 @@ obs_data_array_t *obs_save_sources_filtered(obs_save_source_filter_cb cb,
 	pthread_mutex_unlock(&data->sources_mutex);
 
 	return array;
+}
+
+obs_data_array_t *obs_save_track_sources()
+{
+	if (!obs) return NULL;
+
+	obs_audio_mix_lock();
+	obs_source_t **tracks = (obs_source_t **)obs_audio_mix_tracks();
+
+	obs_data_array_t *array;
+	array = obs_data_array_create();
+
+	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++) {
+		if (tracks[i]) {
+			obs_data_t *track_data = obs_save_source(tracks[i]);
+			obs_data_array_push_back(array, track_data);
+			obs_data_release(track_data);
+		}
+	}
+
+	obs_audio_mix_unlock();
+	return array;
+}
+
+
+void obs_load_track_sources(obs_data_array_t *array, obs_load_source_cb cb,
+		void *private_data)
+{
+	if (!obs) return;
+
+	obs_audio_mix_lock();
+	obs_source_t **tracks = (obs_source_t **)obs_audio_mix_tracks();
+	size_t count = obs_data_array_count(array);
+	if (count > MAX_AUDIO_MIXES)
+		count = MAX_AUDIO_MIXES;
+
+	for (size_t i = 0; i < count; i++) {
+		obs_data_t *source_data = obs_data_array_item(array, i);
+		if (tracks[i]) {
+			obs_source_release(tracks[i]);
+			tracks[i] = NULL;
+		}
+		if (!tracks[i]) {
+			tracks[i] = obs_load_source(source_data);
+			obs_source_load(tracks[i]);
+		}
+		obs_data_release(source_data);
+	}
+
+	obs_audio_mix_unlock();
 }
 
 static bool save_source_filter(void *data, obs_source_t *source)

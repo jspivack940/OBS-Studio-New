@@ -2626,6 +2626,24 @@ static void process_audio(obs_source_t *source,
 		downmix_to_mono_planar(source, frames);
 }
 
+struct obs_audio_data *obs_source_output_audio_track(obs_source_t *source,
+	const struct obs_source_audio *audio)
+{
+	struct obs_audio_data *output;
+
+	if (!obs_source_valid(source, "obs_source_output_audio_track"))
+		return NULL;
+	if (!obs_ptr_valid(audio, "obs_source_output_audio_track"))
+		return NULL;
+
+	process_audio(source, audio);
+
+	pthread_mutex_lock(&source->filter_mutex);
+	output = filter_async_audio(source, &source->audio_data);
+	pthread_mutex_unlock(&source->filter_mutex);
+	return output;
+}
+
 void obs_source_output_audio(obs_source_t *source,
 		const struct obs_source_audio *audio)
 {

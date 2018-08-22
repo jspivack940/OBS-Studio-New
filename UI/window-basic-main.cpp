@@ -382,6 +382,9 @@ static obs_data_t *GenerateSaveData(obs_data_array_t *sceneOrder,
 	}, nullptr);
 
 	/* -------------------------------- */
+	/* save mix track sources */
+
+	obs_data_array_t * tracksArray = obs_save_track_sources();
 
 	obs_source_t *transition = obs_get_output_source(0);
 	obs_source_t *currentScene = obs_scene_get_source(scene);
@@ -396,10 +399,12 @@ static obs_data_t *GenerateSaveData(obs_data_array_t *sceneOrder,
 	obs_data_set_array(saveData, "scene_order", sceneOrder);
 	obs_data_set_string(saveData, "name", sceneCollection);
 	obs_data_set_array(saveData, "sources", sourcesArray);
+	obs_data_set_array(saveData, "tracks", tracksArray);
 	obs_data_set_array(saveData, "groups", groupsArray);
 	obs_data_set_array(saveData, "quick_transitions", quickTransitionData);
 	obs_data_set_array(saveData, "transitions", transitions);
 	obs_data_set_array(saveData, "saved_projectors", savedProjectorList);
+	obs_data_array_release(tracksArray);
 	obs_data_array_release(sourcesArray);
 	obs_data_array_release(groupsArray);
 
@@ -797,6 +802,7 @@ void OBSBasic::Load(const char *file)
 
 	obs_data_array_t *sceneOrder = obs_data_get_array(data, "scene_order");
 	obs_data_array_t *sources    = obs_data_get_array(data, "sources");
+	obs_data_array_t *tracks     = obs_data_get_array(data, "tracks");
 	obs_data_array_t *groups     = obs_data_get_array(data, "groups");
 	obs_data_array_t *transitions= obs_data_get_array(data, "transitions");
 	const char       *sceneName = obs_data_get_string(data,
@@ -838,6 +844,10 @@ void OBSBasic::Load(const char *file)
 	LoadAudioDevice(AUX_AUDIO_2,     4, data);
 	LoadAudioDevice(AUX_AUDIO_3,     5, data);
 
+	for (size_t i = 0; i < MAX_AUDIO_MIXES; i++) {
+
+	}
+
 	if (!sources) {
 		sources = groups;
 		groups = nullptr;
@@ -845,6 +855,7 @@ void OBSBasic::Load(const char *file)
 		obs_data_array_push_back_array(sources, groups);
 	}
 
+	obs_load_track_sources(tracks, nullptr, nullptr);
 	obs_load_sources(sources, nullptr, nullptr);
 
 	if (transitions)
@@ -891,6 +902,7 @@ retryScene:
 	obs_data_array_release(sources);
 	obs_data_array_release(groups);
 	obs_data_array_release(sceneOrder);
+	obs_data_array_release(tracks);
 
 	/* ------------------- */
 
@@ -2709,6 +2721,21 @@ void OBSBasic::MixerRenameTrack() {
 	}
 }
 
+void OBSBasic::OpenTrackFilters()
+{
+	QAction *action = reinterpret_cast<QAction*>(sender());
+	VolControl *vol = action->property("volControl").value<VolControl*>();
+	int track_index = vol->GetTrack();
+
+	obs_audio_mix_lock();
+	obs_source_t **tracks = (obs_source_t **)obs_audio_mix_tracks();
+
+	if(track_index >= 0 && track_index < MAX_AUDIO_MIXES &&
+			tracks[track_index])
+		CreateFiltersWindow(tracks[track_index]);
+	obs_audio_mix_unlock();
+}
+
 void OBSBasic::MasterVolControlContextMenu()
 {
 	VolControl *vol = reinterpret_cast<VolControl*>(sender());
@@ -2719,6 +2746,7 @@ void OBSBasic::MasterVolControlContextMenu()
 	QAction unhideAllAction(QTStr("UnhideAll"), this);
 	QAction mixerRenameAction(QTStr("Rename"), this);
 	QAction advPropAction(QTStr("Basic.MainMenu.Edit.AdvAudio"), this);
+	QAction trackFiltersAction(QTStr("Filters"), this);
 
 	QAction toggleControlLayoutAction(QTStr("VerticalLayoutMaster"), this);
 	toggleControlLayoutAction.setCheckable(true);
@@ -2739,6 +2767,9 @@ void OBSBasic::MasterVolControlContextMenu()
 	connect(&advPropAction, &QAction::triggered,
 			this, &OBSBasic::on_actionAdvAudioProperties_triggered,
 			Qt::DirectConnection);
+	connect(&trackFiltersAction, &QAction::triggered,
+			this, &OBSBasic::OpenTrackFilters,
+			Qt::DirectConnection);
 
 	/* ------------------- */
 
@@ -2752,6 +2783,8 @@ void OBSBasic::MasterVolControlContextMenu()
 			QVariant::fromValue<VolControl*>(vol));
 	mixerRenameAction.setProperty("volControl",
 			QVariant::fromValue<VolControl*>(vol));
+	trackFiltersAction.setProperty("volControl",
+			QVariant::fromValue<VolControl*>(vol));
 
 	/* ------------------- */
 
@@ -2762,6 +2795,7 @@ void OBSBasic::MasterVolControlContextMenu()
 	popup.addSeparator();
 	popup.addAction(&toggleControlLayoutAction);
 	popup.addSeparator();
+	popup.addAction(&trackFiltersAction);
 	popup.addAction(&advPropAction);
 	popup.exec(QCursor::pos());
 }
@@ -3041,12 +3075,17 @@ void OBSBasic::InitAudioMasterMixer() {
 	obs_volmeter_t **meters = (obs_volmeter_t **)obs_audio_mix_meters();
 	obs_fader_t **faders = (obs_fader_t **)obs_audio_mix_faders();
 	bool *muted = obs_audio_mix_muted();
+	obs_source_t **tracks = (obs_source_t **)obs_audio_mix_tracks();
 	VolControl *vol[MAX_AUDIO_MIXES];
 	bool hidden[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
 		vol[i] = new VolControl(&mixes[i], &muted[i], true, vertical, i);
 		meters[i] = vol[i]->GetMeter();
 		faders[i] = vol[i]->GetFader();
+		std::string track_name = "Track " + std::to_string(i + 1);
+		if (!tracks[i])
+			tracks[i] = obs_source_create_private("obs_track_out",
+				track_name.c_str(), NULL);
 	}
 	obs_audio_mix_unlock();
 
