@@ -54,7 +54,7 @@ bool nvafx_loaded = false;
 #define TEXT_METHOD_RNN MT_("NoiseSuppress.Method.RNNoise")
 #define TEXT_METHOD_NVAFX MT_("NoiseSuppress.Method.nvafx")
 
-#define MAX_PREPROC_CHANNELS 8
+#define MAX_PREPROC_CHANNELS 16
 
 /* RNNoise constants, these can't be changed */
 #define RNNOISE_SAMPLE_RATE 48000
