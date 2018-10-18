@@ -3087,6 +3087,11 @@ void OBSBasic::VolControlContextMenu()
 	ShowMonitoringButtonAction.setChecked(config_get_bool(
 		GetGlobalConfig(), "BasicWindow", "ShowMonitoringButton"));
 
+	QAction showTracksButtonsAction(QTStr("ShowTracksButtons"), this);
+	showTracksButtonsAction.setCheckable(true);
+	showTracksButtonsAction.setChecked(config_get_bool(
+		GetGlobalConfig(), "BasicWindow", "ShowTracksButtons"));
+
 	/* ------------------- */
 
 	connect(&hideAction, &QAction::triggered, this,
@@ -3118,6 +3123,9 @@ void OBSBasic::VolControlContextMenu()
 
 	connect(&ShowMonitoringButtonAction, &QAction::changed, this,
 		&OBSBasic::ShowMonitoringButton, Qt::DirectConnection);
+
+	connect(&showTracksButtonsAction, &QAction::changed, this,
+		&OBSBasic::ShowTracksButtons, Qt::DirectConnection);
 
 	/* ------------------- */
 
@@ -3157,6 +3165,7 @@ void OBSBasic::VolControlContextMenu()
 	popup.addSeparator();
 	popup.addAction(&toggleControlLayoutAction);
 	popup.addAction(&ShowMonitoringButtonAction);
+	popup.addAction(&showTracksButtonsAction);
 	popup.addSeparator();
 	popup.addAction(&filtersAction);
 	popup.addAction(&propertiesAction);
@@ -3200,6 +3209,11 @@ void OBSBasic::StackedMixerAreaContextMenuRequested()
 	ShowMonitoringButtonAction.setChecked(config_get_bool(
 		GetGlobalConfig(), "BasicWindow", "ShowMonitoringButton"));
 
+	QAction showTracksButtonsAction(QTStr("ShowTracksButtons"), this);
+	showTracksButtonsAction.setCheckable(true);
+	showTracksButtonsAction.setChecked(config_get_bool(
+		GetGlobalConfig(), "BasicWindow", "ShowTracksButtons"));
+
 	/* ------------------- */
 
 	connect(&unhideAllAction, &QAction::triggered, this,
@@ -3217,6 +3231,9 @@ void OBSBasic::StackedMixerAreaContextMenuRequested()
 	connect(&ShowMonitoringButtonAction, &QAction::changed, this,
 		&OBSBasic::ShowMonitoringButton, Qt::DirectConnection);
 
+	connect(&showTracksButtonsAction, &QAction::changed, this,
+		&OBSBasic::ShowTracksButtons, Qt::DirectConnection);
+
 	/* ------------------- */
 
 	QMenu popup;
@@ -3224,6 +3241,7 @@ void OBSBasic::StackedMixerAreaContextMenuRequested()
 	popup.addSeparator();
 	popup.addAction(&toggleControlLayoutAction);
 	popup.addAction(&ShowMonitoringButtonAction);
+	popup.addAction(&showTracksButtonsAction);
 	popup.addSeparator();
 	popup.addAction(&advPropAction);
 	popup.exec(QCursor::pos());
@@ -3316,6 +3334,18 @@ void OBSBasic::ShowMonitoringButton()
 	}
 }
 
+void OBSBasic::ShowTracksButtons()
+{
+	bool showTracks = !config_get_bool(GetGlobalConfig(), "BasicWindow",
+					   "ShowTracksButtons");
+	config_set_bool(GetGlobalConfig(), "BasicWindow", "ShowTracksButtons",
+			showTracks);
+
+	for (auto volume : volumes) {
+		volume->showTracksButtons(showTracks);
+	}
+}
+
 void OBSBasic::ToggleMasterVolControlLayout()
 {
 	bool vertical = !config_get_bool(GetGlobalConfig(), "BasicWindow",
@@ -3336,8 +3366,11 @@ void OBSBasic::ActivateAudioSource(OBSSource source)
 					"VerticalVolControl");
 	bool ShowMonitoringButton = config_get_bool(
 		GetGlobalConfig(), "BasicWindow", "ShowMonitoringButton");
+	bool ShowTracksButtons = config_get_bool(
+		GetGlobalConfig(), "BasicWindow", "ShowTracksButtons");
 	VolControl *vol = new VolControl(source, NULL, true, vertical,
 					 ShowMonitoringButton,
+					 ShowTracksButtons,
 					 SOURCE_IS_NOT_TRACK);
 
 	vol->EnableSlider(!SourceVolumeLocked(source));
@@ -3399,7 +3432,7 @@ void OBSBasic::InitAudioMasterMixer()
 	bool hidden[MAX_AUDIO_MIXES];
 	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
 		vol[i] = new VolControl(tracks[i], &muted[i], true, vertical,
-					true, i);
+					true, false, i);
 		meters[i] = vol[i]->GetMeter();
 		faders[i] = vol[i]->GetFader();
 		std::string trackNum = "Track" + std::to_string(i + 1) + "Name";
