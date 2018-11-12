@@ -1329,9 +1329,11 @@ static void source_output_audio_data(obs_source_t *source,
 			push_back = false;
 		source->last_sync_offset = sync_offset;
 	}
+	if (source->pre_rematrix_monitor) {
 	pthread_mutex_unlock(&source->audio_buf_mutex);
 	source_signal_audio_data(source, &in, source_muted(source, os_time));
 	pthread_mutex_lock(&source->audio_buf_mutex);
+	}
 	process_audio(source, in.timestamp);
 	for (int i = 0; i < MAX_AV_PLANES; i++)
 		in.data[i] = source->audio_data.data[i];
@@ -1342,6 +1344,9 @@ static void source_output_audio_data(obs_source_t *source,
 		source_output_audio_place(source, &in);
 
 	pthread_mutex_unlock(&source->audio_buf_mutex);
+	if (!source->pre_rematrix_monitor) {
+	source_signal_audio_data(source, &in, source_muted(source, os_time));
+	}
 }
 
 enum convert_type {
@@ -4250,6 +4255,19 @@ enum obs_monitoring_type obs_source_get_monitoring_type(
 {
 	return obs_source_valid(source, "obs_source_get_monitoring_type") ?
 		source->monitoring_type : OBS_MONITORING_TYPE_NONE;
+}
+
+bool obs_source_get_monitoring_pre_post_state(
+		const obs_source_t *source)
+{
+	return obs_source_valid(source, "obs_source_get_monitoring_pre_post_state") ?
+		source->pre_rematrix_monitor : 0;
+}
+
+void obs_source_set_monitoring_pre_post_state(
+		obs_source_t *source, bool state)
+{
+	source->pre_rematrix_monitor = state;
 }
 
 void obs_source_set_async_unbuffered(obs_source_t *source, bool unbuffered)

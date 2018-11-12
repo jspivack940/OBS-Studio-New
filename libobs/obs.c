@@ -1694,6 +1694,7 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 	int          di_order;
 	int          di_mode;
 	int          monitoring_type;
+	bool         pre_rematrixing_state;
 
 	source = obs_source_create(id, name, settings, hotkeys);
 
@@ -1758,6 +1759,9 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 		obs_data_get_obj(source_data, "private_settings");
 	if (!source->private_settings)
 		source->private_settings = obs_data_create();
+
+	obs_data_set_default_bool(source_data, "pre_rematrix_monitoring", false);
+	obs_source_set_monitoring_pre_post_state(source, obs_data_get_bool(source_data, "pre_rematrix_monitoring"));
 
 	if (filters) {
 		size_t count = obs_data_array_count(filters);
@@ -1861,6 +1865,7 @@ obs_data_t *obs_save_source(obs_source_t *source)
 	int        di_mode     = (int)obs_source_get_deinterlace_mode(source);
 	int        di_order    =
 		(int)obs_source_get_deinterlace_field_order(source);
+	bool       pre_post    = obs_source_get_monitoring_pre_post_state(source);
 
 	obs_source_save(source);
 	hotkeys = obs_hotkeys_save_source(source);
@@ -1892,6 +1897,7 @@ obs_data_t *obs_save_source(obs_source_t *source)
 
 	obs_data_set_obj(source_data, "private_settings",
 			source->private_settings);
+	obs_data_set_bool  (source_data, "pre_rematrix_monitoring", pre_post);
 
 	if (source->info.type == OBS_SOURCE_TYPE_TRANSITION)
 		obs_transition_save(source, source_data);

@@ -888,19 +888,21 @@ int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 {
 	int source_nr_audio_channels;
 	int obs_nr_audio_channels;
-
-	if (volmeter->source) {
-		source_nr_audio_channels = get_audio_channels(
-			volmeter->source->sample_info.speakers);
-	} else {
-		source_nr_audio_channels = 1;
-	}
+	bool pre_post_matrix;
 
 	struct obs_audio_info audio_info;
 	if (obs_get_audio_info(&audio_info)) {
 		obs_nr_audio_channels = get_audio_channels(audio_info.speakers);
 	} else {
 		obs_nr_audio_channels = 2;
+	}
+
+	if (volmeter->source) {
+		pre_post_matrix = volmeter->source->pre_rematrix_monitor;
+		source_nr_audio_channels = pre_post_matrix? get_audio_channels(
+				volmeter->source->sample_info.speakers): obs_nr_audio_channels;
+	} else {
+		source_nr_audio_channels = 1;
 	}
 
 	return CLAMP(source_nr_audio_channels, 1, obs_nr_audio_channels);
