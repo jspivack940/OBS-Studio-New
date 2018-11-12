@@ -1694,7 +1694,6 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 	int          di_order;
 	int          di_mode;
 	int          monitoring_type;
-	bool         pre_rematrixing_state;
 
 	source = obs_source_create(id, name, settings, hotkeys);
 

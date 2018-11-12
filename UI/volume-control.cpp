@@ -64,6 +64,11 @@ void VolControl::SetMuted(bool checked)
 	obs_source_set_muted(source, checked);
 }
 
+void VolControl::SetPreMatrix(bool checked)
+{
+	obs_source_set_monitoring_pre_post_state(source, checked);
+}
+
 void VolControl::SliderChanged(int vol)
 {
 	obs_fader_set_deflection(obs_fader, float(vol) * 0.01f);
@@ -123,6 +128,7 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 	nameLabel = new QLabel();
 	volLabel  = new QLabel();
 	mute      = new MuteCheckBox();
+	preMatrix = new PreMatrixCheckBox();
 	QString sourceName = obs_source_get_name(source);
 	setObjectName(sourceName);
 
@@ -173,6 +179,7 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		controlLayout->addItem(new QSpacerItem(3, 0));
 		// Add Headphone (audio monitoring) widget here
 		controlLayout->addWidget(mute);
+		controlLayout->addWidget(preMatrix);
 
 		meterLayout->setContentsMargins(0, 0, 0, 0);
 		meterLayout->setSpacing(0);
@@ -206,6 +213,7 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		volLayout->addWidget(slider);
 		volLayout->addWidget(mute);
 		volLayout->setSpacing(5);
+		volLayout->addWidget(preMatrix);
 
 		botLayout->setContentsMargins(0, 0, 0, 0);
 		botLayout->setSpacing(0);
@@ -243,6 +251,11 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 			this, SLOT(SliderChanged(int)));
 	QWidget::connect(mute, SIGNAL(clicked(bool)),
 			this, SLOT(SetMuted(bool)));
+
+	bool pre = obs_source_get_monitoring_pre_post_state(source);
+	preMatrix->setChecked(pre);
+	QWidget::connect(preMatrix, SIGNAL(clicked(bool)),
+			this, SLOT(SetPreMatrix(bool)));
 
 	obs_fader_attach_source(obs_fader, source);
 	obs_volmeter_attach_source(obs_volmeter, source);
