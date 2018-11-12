@@ -51,6 +51,18 @@ MuteCheckBox::indicator:unchecked {
     image: url(:/res/images/unmute.png);
 }
 
+PreMatrixCheckBox {
+    outline: none;
+}
+
+PreMatrixCheckBox::indicator:checked {
+    image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked {
+    image: url(:/res/images/postM.png);
+}
+
 SourceTreeSubItemCheckBox {
     background: transparent;
     outline: none;

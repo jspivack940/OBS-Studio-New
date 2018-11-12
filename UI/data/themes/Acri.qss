@@ -802,6 +802,43 @@ MuteCheckBox::indicator:unchecked:disabled {
 	image: url(./Dark/unmute.png);
 }
 
+/* pre/post matrix checkbox */
+
+PreMatrixCheckBox {
+	outline: none;
+}
+
+PreMatrixCheckBox::indicator:checked {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked {
+	image: url(:/res/images/postM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:hover {
+	image: url(:/res/images/postM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:focus {
+	image: url(:/res/images/postM.png);
+}
+PreMatrixCheckBox::indicator:checked:hover {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:checked:focus {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:checked:disabled {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:disabled {
+	image: url(:/res/images/postM.png);
+}
+
 OBSHotkeyLabel[hotkeyPairHover=true] {
 	color: rgba(27, 96, 166);
 }

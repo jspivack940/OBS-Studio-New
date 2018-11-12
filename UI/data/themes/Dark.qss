@@ -620,6 +620,17 @@ MuteCheckBox::indicator:unchecked {
     image: url(./Dark/unmute.png);
 }
 
+PreMatrixCheckBox {
+    outline: none;
+}
+
+PreMatrixCheckBox::indicator:checked {
+    image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked {
+    image: url(:/res/images/postM.png);
+}
 OBSHotkeyLabel[hotkeyPairHover=true] {
     color: red;
 }

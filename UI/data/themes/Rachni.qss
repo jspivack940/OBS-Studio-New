@@ -771,6 +771,47 @@ MuteCheckBox::indicator:unchecked:disabled {
 }
 
 /****************************/
+/* pre/post matrix checkbox */
+/****************************/
+
+PreMatrixCheckBox {
+	outline: none;
+}
+
+PreMatrixCheckBox::indicator:checked {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked {
+	image: url(:/res/images/postM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:hover {
+	background-color: rgba(240, 98, 146, 0.5); /* Pink (Secondary) */
+	image: url(:/res/images/postM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:focus {
+	image: url(:/res/images/postM.png);
+}
+PreMatrixCheckBox::indicator:checked:hover {
+	background-color: rgba(240, 98, 146, 0.5); /* Pink (Secondary) */
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:checked:focus {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:checked:disabled {
+	image: url(:/res/images/preM.png);
+}
+
+PreMatrixCheckBox::indicator:unchecked:disabled {
+	image: url(:/res/images/postM.png);
+}
+
+/****************************/
 /* --- Group Checkboxes --- */
 /****************************/
 
