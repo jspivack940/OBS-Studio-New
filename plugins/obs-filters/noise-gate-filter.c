@@ -79,7 +79,7 @@ static void noise_gate_update(void *data, obs_data_t *s)
 	sample_rate = (float)audio_output_get_sample_rate(obs_get_audio());
 
 	ng->sample_rate_i = 1.0f / sample_rate;
-	ng->channels = audio_output_get_channels(obs_get_audio());
+	//ng->channels = audio_output_get_channels(obs_get_audio());
 	ng->open_threshold = db_to_mul(open_threshold_db);
 	ng->close_threshold = db_to_mul(close_threshold_db);
 	ng->attack_rate = 1.0f / (ms_to_secf(attack_time_ms) * sample_rate);
@@ -100,6 +100,7 @@ static void *noise_gate_create(obs_data_t *settings, obs_source_t *filter)
 {
 	struct noise_gate_data *ng = bzalloc(sizeof(*ng));
 	ng->context = filter;
+	ng->channels = 0;
 	noise_gate_update(ng, settings);
 	return ng;
 }
@@ -117,7 +118,8 @@ static struct obs_audio_data *noise_gate_filter_audio(void *data,
 	const float attack_rate = ng->attack_rate;
 	const float decay_rate = ng->decay_rate;
 	const float hold_time = ng->hold_time;
-	const size_t channels = ng->channels;
+	const size_t channels = audio->channels;
+	ng->channels = audio->channels;
 
 	for (size_t i = 0; i < audio->frames; i++) {
 		float cur_level = fabsf(adata[0][i]);

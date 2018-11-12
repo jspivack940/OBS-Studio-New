@@ -104,14 +104,13 @@ static void noise_suppress_update(void *data, obs_data_t *s)
 	struct noise_suppress_data *ng = data;
 
 	uint32_t sample_rate = audio_output_get_sample_rate(obs_get_audio());
-	size_t channels = audio_output_get_channels(obs_get_audio());
+	size_t channels = ng->channels;
 	size_t frames = (size_t)sample_rate / 100;
 
 	ng->suppress_level = (int)obs_data_get_int(s, S_SUPPRESS_LEVEL);
 
 	/* Process 10 millisecond segments to keep latency low */
 	ng->frames = frames;
-	ng->channels = channels;
 
 	/* Ignore if already allocated */
 	if (ng->states[0])
@@ -136,6 +135,7 @@ static void *noise_suppress_create(obs_data_t *settings, obs_source_t *filter)
 		bzalloc(sizeof(struct noise_suppress_data));
 
 	ng->context = filter;
+	ng->channels = 0;
 	noise_suppress_update(ng, settings);
 	return ng;
 }
@@ -207,6 +207,7 @@ static struct obs_audio_data *noise_suppress_filter_audio(void *data,
 	size_t segment_size = ng->frames * sizeof(float);
 	size_t out_size;
 
+	ng->channels = audio->channels;
 	if (!ng->states[0])
 		return audio;
 

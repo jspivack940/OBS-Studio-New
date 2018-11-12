@@ -188,8 +188,8 @@ static void compressor_update(void *data, obs_data_t *s)
 
 	const uint32_t sample_rate =
 		audio_output_get_sample_rate(obs_get_audio());
-	const size_t num_channels =
-		audio_output_get_channels(obs_get_audio());
+	//const size_t num_channels =
+	//	audio_output_get_channels(obs_get_audio());
 	const float attack_time_ms =
 		(float)obs_data_get_int(s, S_ATTACK_TIME);
 	const float release_time_ms =
@@ -206,7 +206,7 @@ static void compressor_update(void *data, obs_data_t *s)
 	cd->release_gain = gain_coefficient(sample_rate,
 			release_time_ms / MS_IN_S_F);
 	cd->output_gain = db_to_mul(output_gain_db);
-	cd->num_channels = num_channels;
+	//cd->num_channels = num_channels;
 	cd->sample_rate = sample_rate;
 	cd->slope = 1.0f - (1.0f / cd->ratio);
 
@@ -276,7 +276,7 @@ static void *compressor_create(obs_data_t *settings, obs_source_t *filter)
 		bfree(cd);
 		return NULL;
 	}
-
+	cd->num_channels = 0;
 	compressor_update(cd, settings);
 	return cd;
 }
@@ -440,7 +440,7 @@ static struct obs_audio_data *compressor_filter_audio(void *data,
 	struct obs_audio_data *audio)
 {
 	struct compressor_data *cd = data;
-
+	cd->num_channels = audio->channels;
 	const uint32_t num_samples = audio->frames;
 	if (num_samples == 0)
 		return audio;

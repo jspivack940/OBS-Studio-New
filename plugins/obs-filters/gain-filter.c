@@ -36,7 +36,6 @@ static void gain_update(void *data, obs_data_t *s)
 {
 	struct gain_data *gf = data;
 	double val = obs_data_get_double(s, S_GAIN_DB);
-	gf->channels = audio_output_get_channels(obs_get_audio());
 	gf->multiple = db_to_mul((float)val);
 }
 
@@ -44,6 +43,7 @@ static void *gain_create(obs_data_t *settings, obs_source_t *filter)
 {
 	struct gain_data *gf = bzalloc(sizeof(*gf));
 	gf->context = filter;
+	gf->channels = 0;
 	gain_update(gf, settings);
 	return gf;
 }
@@ -52,7 +52,8 @@ static struct obs_audio_data *gain_filter_audio(void *data,
 		struct obs_audio_data *audio)
 {
 	struct gain_data *gf = data;
-	const size_t channels = gf->channels;
+	const size_t channels = audio->channels;
+	gf->channels = audio->channels;
 	float **adata = (float**)audio->data;
 	const float multiple = gf->multiple;
 

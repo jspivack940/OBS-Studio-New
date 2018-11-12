@@ -194,6 +194,7 @@ struct obs_audio_data {
 	uint8_t             *data[MAX_AV_PLANES];
 	uint32_t            frames;
 	uint64_t            timestamp;
+	int                 channels;
 };
 
 /**

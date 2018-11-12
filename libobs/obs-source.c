@@ -2529,6 +2529,7 @@ static inline struct obs_audio_data *filter_async_audio(obs_source_t *source,
 			continue;
 
 		if (filter->context.data && filter->info.filter_audio) {
+			in->channels = get_audio_channels(source->sample_info.speakers);
 			in = filter->info.filter_audio(filter->context.data,
 					in);
 			if (!in)
