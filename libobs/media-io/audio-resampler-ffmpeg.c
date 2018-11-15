@@ -113,6 +113,89 @@ audio_resampler_t *audio_resampler_create(const struct resample_info *dst,
 	return rs;
 }
 
+audio_resampler_t **audio_resampler_create_pair(const struct resample_info *dst,
+	const struct resample_info *src)
+{
+	struct audio_resampler *rs[2] /*= bzalloc(2 * sizeof(struct audio_resampler*))*/;
+	rs[0]  = bzalloc(sizeof(struct audio_resampler));
+	rs[1]  = bzalloc(sizeof(struct audio_resampler));
+	int errcode;
+
+	rs[0]->opened = false;
+	rs[0]->input_freq = src->samples_per_sec;
+	rs[0]->input_layout = convert_speaker_layout(src->speakers);
+	rs[0]->input_format = convert_audio_format(src->format);
+	rs[0]->output_size  = 0;
+	rs[0]->output_ch    = get_audio_channels(src->speakers);
+	rs[0]->output_freq  = dst->samples_per_sec;
+	rs[0]->output_layout = convert_speaker_layout(src->speakers);
+	rs[0]->output_format = convert_audio_format(dst->format);
+	rs[0]->output_planes = is_audio_planar(dst->format) ? rs[0]->output_ch : 1;
+
+	rs[1]->opened      = false;
+	rs[1]->input_freq  = dst->samples_per_sec;
+	rs[1]->input_layout = convert_speaker_layout(src->speakers);
+	rs[1]->input_format = convert_audio_format(dst->format);
+	rs[1]->output_size  = 0;
+	rs[1]->output_ch    = get_audio_channels(dst->speakers);
+	rs[1]->output_freq  = dst->samples_per_sec;
+	rs[1]->output_layout = convert_speaker_layout(dst->speakers);
+	rs[1]->output_format = convert_audio_format(dst->format);
+	rs[1]->output_planes = is_audio_planar(dst->format) ? rs[1]->output_ch : 1;
+
+	rs[0]->context = swr_alloc_set_opts(NULL,
+		rs[0]->output_layout, rs[0]->output_format, dst->samples_per_sec,
+		rs[0]->input_layout, rs[0]->input_format, src->samples_per_sec,
+		0, NULL);
+
+	rs[1]->context = swr_alloc_set_opts(NULL,
+		rs[1]->output_layout, rs[1]->output_format, dst->samples_per_sec,
+		rs[1]->input_layout, rs[1]->input_format, dst->samples_per_sec,
+		0, NULL);
+
+	if (!rs[0]->context) {
+		blog(LOG_ERROR, "swr_alloc_set_opts failed");
+		if (rs[0]->output_buffer[0])
+			av_freep(&rs[0]->output_buffer[0]);
+		audio_resampler_destroy(rs[0]);
+		return NULL;
+	}
+
+	if (!rs[1]->context) {
+		blog(LOG_ERROR, "swr_alloc_set_opts failed");
+		if (rs[1]->output_buffer[0])
+			av_freep(&rs[1]->output_buffer[0]);
+		audio_resampler_destroy(rs[1]);
+		return NULL;
+	}
+
+	errcode = swr_init(rs[0]->context);
+	if (errcode != 0) {
+		blog(LOG_ERROR, "avresample_open failed: error code %d",
+			errcode);
+		if (rs[0]->context)
+			swr_free(&rs[0]->context);
+		if (rs[0]->output_buffer[0])
+			av_freep(&rs[0]->output_buffer[0]);
+		audio_resampler_destroy(rs[0]);
+		return NULL;
+	}
+
+	errcode = swr_init(rs[1]->context);
+	if (errcode != 0) {
+		blog(LOG_ERROR, "avresample_open failed: error code %d",
+			errcode);
+		if (rs[1]->context)
+			swr_free(&rs[1]->context);
+		if (rs[1]->output_buffer[0])
+			av_freep(&rs[1]->output_buffer[0]);
+		audio_resampler_destroy(rs[1]);
+		return NULL;
+	}
+
+	return rs;
+}
+
 void audio_resampler_destroy(audio_resampler_t *rs)
 {
 	if (rs) {

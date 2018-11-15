@@ -727,6 +727,8 @@ struct obs_source {
 
 	obs_data_t                      *private_settings;
 	bool                            pre_rematrix_monitor;
+	bool                            pre_rematrix_monitor_reset;
+	audio_resampler_t *             resampler2;
 };
 
 extern struct obs_source_info *get_source_info(const char *id);
