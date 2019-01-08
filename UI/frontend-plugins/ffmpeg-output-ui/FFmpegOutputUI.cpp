@@ -297,9 +297,23 @@ FFmpegOutputUI::FFmpegOutputUI(QWidget *parent)
 {
 	ui->setupUi(this);
 	config = new ffmpeg_cfg;
+	//ui->startstop->setStyleSheet(
+	//	QCheckBox:indicator{
+	//	   width: 110px;
+	//	   height: 79px;
+	//	}
 
-	connect(ui->startOutput, SIGNAL(released()), this, SLOT(StartOutput()));
-	connect(ui->stopOutput, SIGNAL(released()), this, SLOT(StopOutput()));
+	//	QCheckBox::indicator:checked
+	//	{
+	//	  image: url(: / images / start.png);
+	//	}
+	//		QCheckBox::indicator : unchecked
+	//	{
+	//	  image: url(: / images / stop.png);
+	//	}
+	//);
+//	connect(ui->startOutput, SIGNAL(released()), this, SLOT(StartOutput()));
+//	connect(ui->stopOutput, SIGNAL(released()), this, SLOT(StopOutput()));
 }
 
 void FFmpegOutputUI::SetupFilenameCompleter()
@@ -701,3 +715,10 @@ void FFmpegOutputUI::on_close_clicked()
 	this->close();
 }
 
+void FFmpegOutputUI::on_startstop_toggled(bool checked)
+{
+	if (checked)
+		StartOutput();
+	else
+		StopOutput();
+}

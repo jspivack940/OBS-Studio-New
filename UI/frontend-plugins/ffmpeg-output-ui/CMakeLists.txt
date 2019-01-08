@@ -46,6 +46,9 @@ set(ffmpeg-ouput-ui_UI
 	forms/output.ui
 	)
 
+set(ffmpeg-output_QRC
+	forms/ffmpeg.qrc)
+
 if(APPLE)
 	set(ffmpeg-ouput-ui_PLATFORM_LIBS
 		${COCOA})
@@ -53,12 +56,15 @@ endif()
 
 qt5_wrap_ui(ffmpeg-ouput-ui_UI_HEADERS
 	${ffmpeg-ouput-ui_UI})
+qt5_add_resources(ffmpeg-output_QRC_SOURCES ${ffmpeg-output_QRC})
 
 add_library(ffmpeg-ouput-ui MODULE
 	${ffmpeg-ouput-ui_HEADERS}
 	${ffmpeg-ouput-ui_SOURCES}
 	${ffmpeg-ouput-ui_UI_HEADERS}
+	${ffmpeg-output_QRC_SOURCES}
 	)
+
 target_link_libraries(ffmpeg-ouput-ui
 	${frontend-tools_PLATFORM_LIBS}
 	obs-frontend-api

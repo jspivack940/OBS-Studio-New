@@ -140,6 +140,7 @@ private slots:
 	void on_apply_clicked();
 	void on_close_clicked();
 	void on_cancel_clicked();
+	void on_startstop_toggled(bool checked);
 
 
 public slots:
