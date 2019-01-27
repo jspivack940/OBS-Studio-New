@@ -790,6 +790,39 @@ void fill_out_devices(obs_property_t *list) {
 	uint32_t i;
 	for (i = 0; BASS_ASIO_GetDeviceInfo(i, &devinfo); i++) {
 		obs_property_list_add_string(list, devinfo.name, devinfo.name);
+		/* the device list includes all drivers in registry.
+		 * The following hack checks whether the device is hooked or not.
+		 * For that initialization is  attempted.
+		 */
+		ret = BASS_ASIO_Init(i, BASS_ASIO_THREAD);
+		if (!ret) {
+			res = BASS_ASIO_ErrorGetCode();
+			switch (res) {
+			case BASS_ERROR_DEVICE:
+				blog(LOG_ERROR, "The device number specified is invalid.\n");
+				break;
+			case BASS_ERROR_ALREADY:
+				blog(LOG_ERROR, "The device has already been initialized\n");
+				break;
+			case BASS_ERROR_DRIVER:
+				blog(LOG_ERROR, "The driver could not be initialized\n");
+				break;
+			}
+			/* Disable entry if device is not connected (BASS_ERROR_DRIVER)
+			 * or if the driver's been uninstalled (BASS_ERROR_DEVICE)
+			 * but not if the driver's already initialized.
+			 * If the device is not multi-client, this may be an issue.
+			 * But this is the only way to enable several asio sources
+			 * in obs with same device but possibly different channel
+			 * selections.
+			 */
+			if (res != BASS_ERROR_ALREADY)
+				obs_property_list_item_disable(list, i, true);
+		} else {
+			ret = BASS_ASIO_Free();
+			if (!ret)
+				blog(LOG_ERROR, "Should never have reached here, wtf uh oh.\n");
+		}
 	}
 }
 
@@ -810,11 +843,12 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	// DEBUG: check that the current device in bass thread is the correct one
 	// once code is fine the check can be removed
 	const char* device = obs_data_get_string(settings, "device_id");
-	if (!strcmp(device, devinfo.name)) {
+	if (ret && !strcmp(device, devinfo.name)) {
 		blog(LOG_ERROR, "Device loaded is not the one in settings\n");
 	}
 	//get the device info
-	DWORD input_channels = info.inputs;
+
+	DWORD input_channels = ret ? info.inputs : 0;
 	obs_property_list_clear(list);
 	obs_property_list_add_int(list, "mute", -1);
 	BASS_ASIO_CHANNELINFO ch_info;
@@ -833,6 +867,7 @@ static bool fill_out_sample_rates(obs_properties_t *props, obs_property_t *list,
 	BASS_ASIO_DEVICEINFO devinfo;
 	int index = BASS_ASIO_GetDevice();
 	bool ret = BASS_ASIO_GetDeviceInfo(index, &devinfo);
+	bool ret2;
 	if (!ret) {
 		blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
 			"error number is : %i \n; check BASS_ASIO_ErrorGetCode\n",
@@ -841,32 +876,32 @@ static bool fill_out_sample_rates(obs_properties_t *props, obs_property_t *list,
 	// DEBUG: check that the current device in bass thread is the correct one
 	// once code is fine the check can be removed
 	const char* device = obs_data_get_string(settings, "device_id");
-	if (!strcmp(device, devinfo.name)) {
+	if (ret && !strcmp(device, devinfo.name)) {
 		blog(LOG_ERROR, "Device loaded is not the one in settings\n");
 	}
 
 	obs_property_list_clear(list);
 	//get the device info
-	ret = BASS_ASIO_CheckRate(44100);
-	if (ret) {
+	if (ret)
+		ret2 = BASS_ASIO_CheckRate(44100);
+	if (ret2) {
 		std::string rate = "44100 Hz";
 		char* cstr = new char[rate.length() + 1];
 		strcpy(cstr, rate.c_str());
 		obs_property_list_add_int(list, cstr, 44100);
 		delete cstr;
-	}
-	else {
+	} else {
 		blog(LOG_INFO, "Device loaded does not support 44100 Hz sample rate\n");
 	}
-	ret = BASS_ASIO_CheckRate(48000);
-	if (ret) {
+	if (ret)
+		ret2 = BASS_ASIO_CheckRate(48000);
+	if (ret2) {
 		std::string rate = "48000 Hz";
 		char* cstr = new char[rate.length() + 1];
 		strcpy(cstr, rate.c_str());
 		obs_property_list_add_int(list, cstr, 48000);
 		delete cstr;
-	}
-	else {
+	} else {
 		blog(LOG_INFO, "Device loaded does not support 48000 Hz sample rate\n");
 	}
 	return true;
@@ -877,6 +912,7 @@ static bool fill_out_bit_depths(obs_properties_t *props, obs_property_t *list, o
 	BASS_ASIO_DEVICEINFO devinfo;
 	int index = BASS_ASIO_GetDevice();
 	bool ret = BASS_ASIO_GetDeviceInfo(index, &devinfo);
+	bool ret2;
 	if (!ret) {
 		blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
 			"error number is : %i \n; check BASS_ASIO_ErrorGetCode\n",
@@ -885,14 +921,15 @@ static bool fill_out_bit_depths(obs_properties_t *props, obs_property_t *list, o
 	// DEBUG: check that the current device in bass thread is the correct one
 	// once code is fine the check can be removed
 	const char* device = obs_data_get_string(settings, "device_id");
-	if (!strcmp(device, devinfo.name)) {
+	if (ret && !strcmp(device, devinfo.name)) {
 		blog(LOG_ERROR, "Device loaded is not the one in settings\n");
 	}
 
 	//get the device channel info
 	BASS_ASIO_CHANNELINFO channelInfo;
-	ret = BASS_ASIO_ChannelGetInfo(true, 0, &channelInfo);
-	if (!ret) {
+	if (ret)
+		ret2 = BASS_ASIO_ChannelGetInfo(true, 0, &channelInfo);
+	if (!ret2) {
 		blog(LOG_ERROR, "Unable to retrieve channel info on the current driver \n"
 			"error number is : %i \n; check BASS_ASIO_ErrorGetCode\n",
 			BASS_ASIO_ErrorGetCode());
@@ -901,30 +938,30 @@ static bool fill_out_bit_depths(obs_properties_t *props, obs_property_t *list, o
 	obs_property_list_clear(list);
 	//these settings are ignored, optimal is picked between float and native for least
 	//amount of processing possible
-	if (channelInfo.format == BASS_ASIO_FORMAT_16BIT) {
-		obs_property_list_add_int(list, "16 bit (native)", AUDIO_FORMAT_16BIT);
-		obs_property_list_add_int(list, "32 bit", AUDIO_FORMAT_32BIT);
-		obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
+	if (ret && ret2) {
+		if (channelInfo.format == BASS_ASIO_FORMAT_16BIT) {
+			obs_property_list_add_int(list, "16 bit (native)", AUDIO_FORMAT_16BIT);
+			obs_property_list_add_int(list, "32 bit", AUDIO_FORMAT_32BIT);
+			obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
+		} else if (channelInfo.format == BASS_ASIO_FORMAT_32BIT) {
+			obs_property_list_add_int(list, "16 bit", AUDIO_FORMAT_16BIT);
+			obs_property_list_add_int(list, "32 bit (native)", AUDIO_FORMAT_32BIT);
+			obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
+		} else if (channelInfo.format == BASS_ASIO_FORMAT_FLOAT) {
+			obs_property_list_add_int(list, "16 bit", AUDIO_FORMAT_16BIT);
+			obs_property_list_add_int(list, "32 bit", AUDIO_FORMAT_32BIT);
+			obs_property_list_add_int(list, "32 bit float (native)", AUDIO_FORMAT_FLOAT);
+		} else {
+			blog(LOG_ERROR, "Your device uses unsupported bit depth.\n"
+				"Only 16 bit, 32 bit signed int and 32 bit float are supported.\n"
+				"Change accordingly your device settings.\n"
+				"Forcing bit depth to 32 bit float");
+			obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
+			return false;
+		}
+		return true;
 	}
-	else if (channelInfo.format == BASS_ASIO_FORMAT_32BIT) {
-		obs_property_list_add_int(list, "16 bit", AUDIO_FORMAT_16BIT);
-		obs_property_list_add_int(list, "32 bit (native)", AUDIO_FORMAT_32BIT);
-		obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
-	}
-	else if (channelInfo.format == BASS_ASIO_FORMAT_FLOAT) {
-		obs_property_list_add_int(list, "16 bit", AUDIO_FORMAT_16BIT);
-		obs_property_list_add_int(list, "32 bit", AUDIO_FORMAT_32BIT);
-		obs_property_list_add_int(list, "32 bit float (native)", AUDIO_FORMAT_FLOAT);
-	}
-	else {
-		blog(LOG_ERROR, "Your device uses unsupported bit depth.\n"
-			"Only 16 bit, 32 bit signed int and 32 bit float are supported.\n"
-			"Change accordingly your device settings.\n"
-			"Forcing bit depth to 32 bit float");
-		obs_property_list_add_int(list, "32 bit float", AUDIO_FORMAT_FLOAT);
-		return false;
-	}
-	return true;
+	return false;
 }
 
 //create list of device supported buffer sizes
@@ -938,61 +975,62 @@ static bool fill_out_buffer_sizes(obs_properties_t *props, obs_property_t *list,
 	}
 
 	obs_property_list_clear(list);
-
-	if (info.bufgran == -1) {
-		long long gran_buffer = info.bufmin;
-		while (gran_buffer <= info.bufmax) {
+	if (ret) {
+		if (info.bufgran == -1) {
+			long long gran_buffer = info.bufmin;
+			while (gran_buffer <= info.bufmax) {
+				int n = snprintf(NULL, 0, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
+				if (n <= 0) {
+					//problem...continuing on the loop
+					gran_buffer *= 2;
+					continue;
+				}
+				char * buf = (char*)bmalloc((n + 1) * sizeof(char));
+				if (!buf) {
+					//problem...continuing on the loop
+					gran_buffer *= 2;
+					continue;
+				}
+				int c = snprintf(buf, n + 1, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
+				buf[n] = '\0';
+				obs_property_list_add_int(list, buf, gran_buffer);
+				bfree(buf);
+				gran_buffer *= 2;
+			}
+		} else if (info.bufgran == 0) {
+			size_t gran_buffer = info.bufmin;
 			int n = snprintf(NULL, 0, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
-			if (n <= 0) {
-				//problem...continuing on the loop
-				gran_buffer *= 2;
-				continue;
-			}
 			char * buf = (char*)bmalloc((n + 1) * sizeof(char));
-			if (!buf) {
-				//problem...continuing on the loop
-				gran_buffer *= 2;
-				continue;
-			}
 			int c = snprintf(buf, n + 1, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
 			buf[n] = '\0';
 			obs_property_list_add_int(list, buf, gran_buffer);
 			bfree(buf);
-			gran_buffer *= 2;
-		}
-	}
-	else if (info.bufgran == 0) {
-		size_t gran_buffer = info.bufmin;
-		int n = snprintf(NULL, 0, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
-		char * buf = (char*)bmalloc((n + 1) * sizeof(char));
-		int c = snprintf(buf, n + 1, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
-		buf[n] = '\0';
-		obs_property_list_add_int(list, buf, gran_buffer);
-		bfree(buf);
-	} else if (info.bufgran > 0) {
-		size_t gran_buffer = info.bufmin;
-		while (gran_buffer <= info.bufmax) {
-			int n = snprintf(NULL, 0, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
-			if (n <= 0) {
-				//problem...continuing on the loop
+		} else if (info.bufgran > 0) {
+			size_t gran_buffer = info.bufmin;
+			while (gran_buffer <= info.bufmax) {
+				int n = snprintf(NULL, 0, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
+				if (n <= 0) {
+					//problem...continuing on the loop
+					gran_buffer += info.bufgran;
+					continue;
+				}
+				char * buf = (char*)bmalloc((n + 1) * sizeof(char));
+				if (!buf) {
+					//problem...continuing on the loop
+					gran_buffer += info.bufgran;
+					continue;
+				}
+				int c = snprintf(buf, n + 1, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
+				buf[n] = '\0';
+				obs_property_list_add_int(list, buf, gran_buffer);
+				bfree(buf);
 				gran_buffer += info.bufgran;
-				continue;
 			}
-			char * buf = (char*)bmalloc((n + 1) * sizeof(char));
-			if (!buf) {
-				//problem...continuing on the loop
-				gran_buffer += info.bufgran;
-				continue;
-			}
-			int c = snprintf(buf, n + 1, "%llu%s", gran_buffer, (gran_buffer == info.bufpref ? " (preferred)" : ""));
-			buf[n] = '\0';
-			obs_property_list_add_int(list, buf, gran_buffer);
-			bfree(buf);
-			gran_buffer += info.bufgran;
 		}
-	}
 
-	return true;
+		return true;
+	}
+	return false;
 }
 
 static bool asio_device_changed(obs_properties_t *props,
@@ -1085,75 +1123,77 @@ void CALLBACK asio_device_setting_changed(DWORD notify, void *device_ptr) {
 	device_data *device = (device_data*)device_ptr;
 	BASS_ASIO_INFO info;
 	bool ret = BASS_ASIO_GetInfo(&info);
-	uint32_t new_sample_rate; 
-	switch (notify) {
-	case BASS_ASIO_NOTIFY_RATE:
-		new_sample_rate = BASS_ASIO_GetRate();
-		blog(LOG_WARNING, "device %l changed sample rate to %f", device->device_index , new_sample_rate);
+	uint32_t new_sample_rate;
+	if (ret) {
+		switch (notify) {
+		case BASS_ASIO_NOTIFY_RATE:
+			new_sample_rate = BASS_ASIO_GetRate();
+			blog(LOG_WARNING, "device %l changed sample rate to %f", device->device_index, new_sample_rate);
 
-		if (!ret) {
-			blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
-				"error number is : %i; \n check BASS_ASIO_ErrorGetCode\n",
-				BASS_ASIO_ErrorGetCode());
-		}
-		BASS_ASIO_Stop();
-		device->update_sample_rate(new_sample_rate);
-		device->re_prep_buffers(info);
-		ret = BASS_ASIO_Start(info.bufpref, info.inputs);
-		if (!ret) {
-			switch (BASS_ASIO_ErrorGetCode()) {
-			case BASS_ERROR_INIT:
-				blog(LOG_ERROR, "Error: Bass asio not initialized.\n");
-				break;
-			case BASS_ERROR_ALREADY:
-				blog(LOG_ERROR, "Error: device already started\n");
-				//BASS_ASIO_Stop(); 
-				//BASS_ASIO_Start(data->BufferSize, recorded_channels);
-				break;
-			case BASS_ERROR_NOCHAN:
-				blog(LOG_ERROR, "Error: channels have not been enabled so can not start\n");
-				break;
-			case BASS_ERROR_UNKNOWN:
-			default:
-				blog(LOG_ERROR, "ASIO init: Unknown error when trying to start the device\n");
-				break;
+			if (!ret) {
+				blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
+					"error number is : %i; \n check BASS_ASIO_ErrorGetCode\n",
+					BASS_ASIO_ErrorGetCode());
 			}
-		}
+			BASS_ASIO_Stop();
+			device->update_sample_rate(new_sample_rate);
+			device->re_prep_buffers(info);
+			ret = BASS_ASIO_Start(info.bufpref, info.inputs);
+			if (!ret) {
+				switch (BASS_ASIO_ErrorGetCode()) {
+				case BASS_ERROR_INIT:
+					blog(LOG_ERROR, "Error: Bass asio not initialized.\n");
+					break;
+				case BASS_ERROR_ALREADY:
+					blog(LOG_ERROR, "Error: device already started\n");
+					//BASS_ASIO_Stop();
+					//BASS_ASIO_Start(data->BufferSize, recorded_channels);
+					break;
+				case BASS_ERROR_NOCHAN:
+					blog(LOG_ERROR, "Error: channels have not been enabled so can not start\n");
+					break;
+				case BASS_ERROR_UNKNOWN:
+				default:
+					blog(LOG_ERROR, "ASIO init: Unknown error when trying to start the device\n");
+					break;
+				}
+			}
 
-		break;
-	case BASS_ASIO_NOTIFY_RESET:
-		blog(LOG_WARNING, "device %l requested a reset", device->device_index);
-		// Reset ?
-		//BASS_ASIO_SetDevice(device->device_index);
-		if (!ret) {
-			blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
-				"error number is : %i \n; check BASS_ASIO_ErrorGetCode\n",
-				BASS_ASIO_ErrorGetCode());
-		}
-		BASS_ASIO_Stop();
-		device->re_prep_buffers(info);
-		ret = BASS_ASIO_Start(info.bufpref,info.inputs);
-		if (!ret) {
-			switch (BASS_ASIO_ErrorGetCode()) {
-			case BASS_ERROR_INIT:
-				blog(LOG_ERROR, "Error: Bass asio not initialized.\n");
-				break;
-			case BASS_ERROR_ALREADY:
-				blog(LOG_ERROR, "Error: device already started\n");
-				//BASS_ASIO_Stop(); 
-				//BASS_ASIO_Start(data->BufferSize, recorded_channels);
-				break;
-			case BASS_ERROR_NOCHAN:
-				blog(LOG_ERROR, "Error: channels have not been enabled so can not start\n");
-				break;
-			case BASS_ERROR_UNKNOWN:
-			default:
-				blog(LOG_ERROR, "ASIO init: Unknown error when trying to start the device\n");
-				break;
+			break;
+		case BASS_ASIO_NOTIFY_RESET:
+			blog(LOG_WARNING, "device %l requested a reset", device->device_index);
+			// Reset ?
+			//BASS_ASIO_SetDevice(device->device_index);
+			if (!ret) {
+				blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
+					"error number is : %i \n; check BASS_ASIO_ErrorGetCode\n",
+					BASS_ASIO_ErrorGetCode());
 			}
+			BASS_ASIO_Stop();
+			device->re_prep_buffers(info);
+			ret = BASS_ASIO_Start(info.bufpref, info.inputs);
+			if (!ret) {
+				switch (BASS_ASIO_ErrorGetCode()) {
+				case BASS_ERROR_INIT:
+					blog(LOG_ERROR, "Error: Bass asio not initialized.\n");
+					break;
+				case BASS_ERROR_ALREADY:
+					blog(LOG_ERROR, "Error: device already started\n");
+					//BASS_ASIO_Stop(); 
+					//BASS_ASIO_Start(data->BufferSize, recorded_channels);
+					break;
+				case BASS_ERROR_NOCHAN:
+					blog(LOG_ERROR, "Error: channels have not been enabled so can not start\n");
+					break;
+				case BASS_ERROR_UNKNOWN:
+				default:
+					blog(LOG_ERROR, "ASIO init: Unknown error when trying to start the device\n");
+					break;
+				}
+			}
+			//BASS_ASIO_Stop();
+			break;
 		}
-		//BASS_ASIO_Stop();		
-		break;
 	}
 }
 
@@ -1278,6 +1318,9 @@ void asio_init(struct asio_data *data)
 	//data->captureThread =  device_list[device_index]->capture_thread();
 	blog(LOG_INFO, "starting listener thread for: %lu", device_index);
 	device_list[device_index]->add_listener(data);
+
+	fail:
+	blog(LOG_ERROR, "Device could not be initialized.\n");
 }
 
 static void * asio_create(obs_data_t *settings, obs_source_t *source)
@@ -1375,8 +1418,9 @@ void asio_update(void *vptr, obs_data_t *settings)
 				blog(LOG_ERROR, "The driver could not be initialized\n");
 				break;
 			}
-		}
-		else {
+			if (res != BASS_ERROR_ALREADY)
+				goto fail;
+		} else {
 			blog(LOG_INFO, "Device %i was successfully initialized\n", device_index);
 			first_initialization = true;
 		}
@@ -1392,12 +1436,14 @@ void asio_update(void *vptr, obs_data_t *settings)
 				blog(LOG_ERROR, "The device has not been initialized\n");
 				break;
 			}
+			goto fail;
 		}
 
 		ret = BASS_ASIO_GetInfo(&info);
 		if (!ret) {
 			blog(LOG_ERROR, "Unable to retrieve info on the current driver \n"
 				"driver is not initialized\n");
+			goto fail;
 		}
 
 		// DEBUG: check that the current device in bass thread is the correct one
@@ -1407,6 +1453,7 @@ void asio_update(void *vptr, obs_data_t *settings)
 		ret = BASS_ASIO_GetDeviceInfo(index, &devinfo);
 		if (!strcmp(device, devinfo.name)) {
 			blog(LOG_ERROR, "Device loaded is not the one in settings\n");
+			goto fail;
 		}
 
 		bool route_changed = false;
@@ -1426,16 +1473,11 @@ void asio_update(void *vptr, obs_data_t *settings)
 		data->muted_chs = data->_get_muted_chs(data->route);
 		data->unmuted_chs = data->_get_unmuted_chs(data->route);
 
-		//safe to leave the critical section
-		//LeaveCriticalSection(&data->settings_mutex);
-
-		//spin up the asio device if it hasn't already and create a listener thread
-		/*rate = (double)obs_data_get_int(settings, "sample rate");
-		BufferSize = (uint16_t)obs_data_get_int(settings, "buffer");
-		BitDepth = (audio_format)obs_data_get_int(settings, "bit depth");
-		if ((rate == 44100 || rate == 48000) && BufferSize != 0)*/
 		asio_init(data);
 	}
+
+	fail :
+	blog(LOG_ERROR, "Device selection is invalid\n");
 
 }
 
