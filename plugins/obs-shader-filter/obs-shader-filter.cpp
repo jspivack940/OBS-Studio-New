@@ -15,6 +15,7 @@ static void sidechain_capture(void *p, obs_source_t *source, const struct audio_
 static bool shader_filter_reload_effect_clicked(obs_properties_t *props, obs_property_t *property, void *data);
 
 static bool shader_filter_file_name_changed(obs_properties_t *props, obs_property_t *p, obs_data_t *settings);
+static bool shader_filter_edit_effect_clicked(obs_properties_t *props, obs_property_t *p, void *data);
 
 static void getMouseCursor(void *data);
 
@@ -3090,13 +3091,17 @@ obs_properties_t *ShaderSource::getProperties(void *data)
 	std::string shaderPath = obs_get_module_data_path(obs_current_module());
 	shaderPath += "/shaders";
 
-	obs_properties_add_button(
+	obs_property_t *reload_button = obs_properties_add_button(
 		props, "reload_effect", obs_module_text("Reload"), shader_filter_reload_effect_clicked);
+	obs_property_set_visible(reload_button, false);
 
 	obs_property_t *file_name = obs_properties_add_path(
 		props, "shader_file_name", obs_module_text("File"), OBS_PATH_FILE, NULL, shaderPath.c_str());
 
 	obs_property_set_modified_callback(file_name, shader_filter_file_name_changed);
+
+	obs_property_t *edit_path = obs_properties_add_button(props, "edit_path", obs_module_text("Edit"), shader_filter_edit_effect_clicked);
+	obs_property_set_visible(edit_path, false);
 
 	for (i = 0; i < filter->paramList.size(); i++) {
 		if (filter->paramList[i])
@@ -3122,6 +3127,9 @@ obs_properties_t *ShaderSource::getPropertiesSource(void *data)
 		props, "shader_file_name", obs_module_text("File"), OBS_PATH_FILE, NULL, shaderPath.c_str());
 
 	obs_property_set_modified_callback(file_name, shader_filter_file_name_changed);
+
+	obs_property_t *edit_path = obs_properties_add_button(props, "edit_path", obs_module_text("Edit"), shader_filter_edit_effect_clicked);
+	obs_property_set_visible(edit_path, false);
 
 	obs_properties_add_int(props, "size.width", obs_module_text("Width"), 0, 4096, 1);
 
@@ -3292,6 +3300,24 @@ static bool shader_filter_file_name_changed(obs_properties_t *props, obs_propert
 		obs_source_update(filter->context, NULL);
 	}
 
+	obs_property_t *edit = obs_properties_get(props, "edit_path");
+	obs_property_t *reload = obs_properties_get(props, "reload_effect");
+
+	obs_property_set_visible(edit, !path.empty());
+	obs_property_set_visible(p, path.empty());
+	obs_property_set_visible(reload, path.empty());
+
+	return true;
+}
+
+static bool shader_filter_edit_effect_clicked(obs_properties_t *props, obs_property_t *p, void *data)
+{
+	obs_property_t *file_name = obs_properties_get(props, "shader_file_name");
+	obs_property_t *reload = obs_properties_get(props, "reload_effect");
+
+	obs_property_set_visible(reload, true);
+	obs_property_set_visible(file_name, true);
+	obs_property_set_visible(p, false);
 	return true;
 }
 
