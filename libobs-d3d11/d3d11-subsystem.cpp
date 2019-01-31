@@ -1382,6 +1382,10 @@ void device_draw(gs_device_t *device, enum gs_draw_mode draw_mode,
 				error.hr);
 		LogD3D11ErrorDetails(error, device);
 		return;
+	} catch (std::exception error) {
+		blog(LOG_ERROR, "device_texture_create_gdi (D3D11): %s",
+				error.what());
+		return;
 	}
 
 	D3D11_PRIMITIVE_TOPOLOGY newTopology = ConvertGSTopology(draw_mode);

@@ -229,8 +229,11 @@ inline void gs_shader::UpdateParam(vector<uint8_t> &constData,
 		gs_shader_param &param, bool &upload)
 {
 	if (param.type != GS_SHADER_PARAM_TEXTURE) {
-		if (!param.curValue.size())
-			throw "Not all shader parameters were set";
+		if (!param.curValue.size()) {
+			std::string err_string = "Not all shader parameters were set: "
+				+ param.name;
+			throw std::exception(err_string.c_str());
+		}
 
 		/* padding in case the constant needs to start at a new
 		 * register */
