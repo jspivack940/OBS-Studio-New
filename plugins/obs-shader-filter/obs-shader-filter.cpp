@@ -830,14 +830,14 @@ private:
 	}
 
 protected:
-	bool              _isFloat;
-	bool              _isInt;
-	bool              _isSlider;
-	bool              _skipWholeProperty;
-	bool              _skipCalculations;
-	bool              _showExpressionLess;
-	std::vector<bool> _skipProperty;
-	std::vector<bool> _disableProperty;
+	bool                _isFloat;
+	bool                _isInt;
+	bool                _isSlider;
+	bool                _skipWholeProperty;
+	bool                _skipCalculations;
+	bool                _showExpressionLess;
+	std::vector<bool>   _skipProperty;
+	std::vector<bool>   _disableProperty;
 	std::vector<double> _min;
 	std::vector<double> _max;
 	std::vector<double> _step;
@@ -1308,6 +1308,24 @@ static void indexBuffer(std::vector<uint32_t>& vec, uint32_t particles)
 	}
 }
 
+static inline void renderSprite(ShaderSource *filter, gs_effect_t *effect, gs_texture_t *texture, const char *techName, uint32_t &cx, uint32_t &cy)
+{
+	size_t i, j;
+	gs_technique_t *tech = gs_effect_get_technique(effect, techName);
+	size_t passes = gs_technique_begin(tech);
+	for (i = 0; i < passes; i++) {
+		gs_technique_begin_pass(tech, i);
+		gs_draw_sprite(texture, 0, cx, cy);
+		gs_technique_end_pass(tech);
+		/*Handle Buffers*/
+		for (j = 0; j < filter->paramList.size(); j++)
+			filter->paramList[j]->onPass(filter, techName, i, texture);
+	}
+	gs_technique_end(tech);
+	for (j = 0; j < filter->paramList.size(); j++)
+		filter->paramList[j]->onTechniqueEnd(filter, techName, texture);
+}
+
 class TextureData : public ShaderData {
 private:
 	void renderSource(EParam *param, uint32_t cx, uint32_t cy)
@@ -1326,7 +1344,6 @@ private:
 		float scale_x = cx / (float)mediaWidth;
 		float scale_y = cy / (float)mediaHeight;
 
-		gs_texrender_reset(_texrender);
 		if (gs_texrender_begin(_texrender, mediaWidth, mediaHeight)) {
 			struct vec4 clearColor;
 			vec4_zero(&clearColor);
@@ -1433,7 +1450,7 @@ protected:
 	uint8_t            _range_0;
 	uint8_t            _range_1;
 	enum TextureType {
-		ignored, unspecified, source, audio, image, media, random, buffer
+		ignored, unspecified, source, audio, image, media, buffer
 	};
 	fft_windowing_type _window;
 	TextureType        _texType;
@@ -1580,22 +1597,25 @@ public:
 
 	void init(gs_shader_param_type paramType)
 	{
+		if (!_texrender)
+			_texrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+
 		_paramType = paramType;
 		_names.push_back(_parent->getName());
 		_descs.push_back(_parent->getDescription());
 
 		EVal                                     *texType = _param->getAnnotationValue("type");
 		std::unordered_map<std::string, uint32_t> types = { {"source", source}, {"audio", audio},
-				{"image", image}, {"media", media}, {"random", random}, {"buffer", buffer} };
+				{"image", image}, {"media", media}, {"buffer", buffer} };
 
 		if (texType && types.find(texType->getString()) != types.end())
 			_texType = (TextureType)types.at(texType->getString());
 		else
 			_texType = image;
 
-		if (_names[0] == "image")
+		if (_names[0] == "image" || _names[0] == "image_0")
 			_texType = ignored;
-		else if (_filter->getType() == OBS_SOURCE_TYPE_TRANSITION && _names[0] == "image_2")
+		else if (_filter->getType() == OBS_SOURCE_TYPE_TRANSITION && _names[0] == "image_1")
 			_texType = ignored;
 
 		_channels = audio_output_get_channels(obs_get_audio());
@@ -1725,10 +1745,6 @@ public:
 			p = obs_properties_add_path(props, _names[0].c_str(), _descs[0].c_str(), OBS_PATH_FILE,
 				shader_filter_texture_file_filter, NULL);
 			break;
-		case random:
-			obs_properties_add_int(props, (_names[0] + "_range_0").c_str(), _descs[0].c_str(), 0, 255, 1);
-			obs_properties_add_int(props, (_names[0] + "_range_1").c_str(), _descs[0].c_str(), 0, 255, 1);
-			break;
 		}
 	}
 
@@ -1796,10 +1812,6 @@ public:
 				gs_image_file_init_texture(_image);
 				obs_leave_graphics();
 			}
-			break;
-		case random:
-			_range_0 = (uint8_t)obs_data_get_int(settings, (_names[0] + "_range_0").c_str());
-			_range_1 = (uint8_t)obs_data_get_int(settings, (_names[0] + "_range_1").c_str());
 			break;
 		}
 	}
@@ -1870,6 +1882,9 @@ public:
 		UNUSED_PARAMETER(elapsedTime);
 		gs_texture_t *t;
 		obs_enter_graphics();
+		int srcWidth = obs_source_get_width(filter->context);
+		int srcHeight = obs_source_get_height(filter->context);
+		gs_texrender_reset(_texrender);
 		switch (_texType) {
 		case media:
 		case source:
@@ -1886,7 +1901,6 @@ public:
 				_sourceHeight = 0;
 			}
 			break;
-		case random:
 		case ignored:
 			_sourceWidth = obs_source_get_width(filter->context);
 			_sourceHeight = obs_source_get_height(filter->context);
@@ -1894,147 +1908,151 @@ public:
 		default:
 			break;
 		}
-#define USE_BUFFER_DRAW
-		if (_isParticle) {
-			const float rate = 1.0f / frame_rate;
-			/*Spawn new particles*/
-			size_t oldSize = _particles.size();
-			_spawnCount += (_spawnRate / frame_rate);
-			size_t spawn = (size_t)floor(_spawnCount);
 
-			_particles.reserve(_particles.size() + spawn);
-			for (float i = 1.0f; i <= (float)_spawnCount; i += 1.0f) {
-				generateParticle(elapsedTime, seconds);
+		if (!_isParticle) {
+			obs_leave_graphics();
+			return;
+		}
+		gs_texrender_reset(_particlerender);
+
+		const float rate = 1.0f / frame_rate;
+		/*Spawn new particles*/
+		size_t oldSize = _particles.size();
+		_spawnCount += (_spawnRate / frame_rate);
+		size_t spawn = (size_t)floor(_spawnCount);
+
+		_particles.reserve(_particles.size() + spawn);
+		for (float i = 1.0f; i <= (float)_spawnCount; i += 1.0f) {
+			generateParticle(elapsedTime, seconds);
+		}
+		_spawnCount -= floor(_spawnCount);
+
+		std::for_each(_particles.begin(), _particles.end(), [&seconds, &rate](transformAlpha &p) {
+			p.lifeTime += seconds;
+			p.alpha = hlsl_clamp(p.alpha - (p.decayAlpha * rate), 0, 255);
+		});
+
+		if (_despawnOld) {
+			/*Remove old particles*/
+			_particles.erase(std::remove_if(_particles.begin(), _particles.end(), [](transformAlpha p) {
+				return p.localLifeTime < p.lifeTime;
+			}), _particles.end());
+		}
+
+		/*Z Order*/
+		const auto zOrder = [](transformAlpha a, transformAlpha b) {
+			return a.pos.z > b.pos.z;
+		};
+
+		/*Transform*/
+		vec3 zeroed;
+		vec3_zero(&zeroed);
+		std::for_each(_particles.begin(), _particles.end(), [&zeroed](transformAlpha &p) {
+			matrix4_mul(&p.position, &p.position, &p.transform);
+			//cache position for z ordering
+			vec3_transform(&p.pos, &zeroed, &p.position);
+		});
+
+		float w = 1.0f;
+		float h = 1.0f;
+		vec4 verts[4] = { 0,0,0,0 };
+		vec4_set(&verts[0], -w / 2.0, -h / 2.0, 0, 0);
+		vec4_set(&verts[1], w / 2.0, -h / 2.0, 0, 0);
+		vec4_set(&verts[2], -w / 2.0, h / 2.0, 0, 0);
+		vec4_set(&verts[3], w / 2.0, h / 2.0, 0, 0);
+
+		std::vector<transformAlpha>::iterator it = std::partition(_particles.begin(),
+			_particles.end(), [&verts](transformAlpha &p) {
+			bool in_view = false;
+			for (int j = 0; j < 4; j++) {
+				vec3_transform(&p.v.ptr[j], (vec3*)&verts[j], &p.position);
+				in_view = in_view || (p.alpha > 0) && (fabsf(p.v.ptr[j].x) <= 1.0 &&
+					fabsf(p.v.ptr[j].y) <= 1.0);
 			}
-			_spawnCount -= floor(_spawnCount);
 
-			std::for_each(_particles.begin(), _particles.end(), [&seconds, &rate](transformAlpha &p) {
-				p.lifeTime += seconds;
-				p.alpha = hlsl_clamp(p.alpha - (p.decayAlpha * rate), 0, 255);
-			});
+			return in_view;
+		});
 
-			if (_despawnOld) {
-				/*Remove old particles*/
-				_particles.erase(std::remove_if(_particles.begin(), _particles.end(), [](transformAlpha p) {
-					return p.localLifeTime < p.lifeTime;
-				}), _particles.end());
+		if (_despawnOutOfView) {
+			_particles.erase(it, _particles.end());
+			std::stable_sort(_particles.begin(), _particles.end(), zOrder);
+		} else {
+			std::stable_sort(_particles.begin(), it, zOrder);
+		}
+
+		if (_particles.size() == 0) {
+			obs_leave_graphics();
+			return;
+		}
+
+		gs_vb_data *vb;
+		if (!_vertexBufferData || oldSize != _particles.size()) {
+			if (_vertexBuffer) {
+				gs_vertexbuffer_destroy(_vertexBuffer);
+				_vertexBuffer = nullptr;
 			}
+			// Allocate memory for data.
+			size_t vCap = 4 * _particles.size();
+			if (!_vertexBufferData) {
+				_vertexBufferData = (struct gs_vb_data*)bzalloc(sizeof(struct gs_vb_data));
+			}
+			_vertexBufferData->num = vCap;
 
-			/*Z Order*/
-			const auto zOrder = [](transformAlpha a, transformAlpha b) {
-				return a.pos.z > b.pos.z;
-			};
+			if (oldSize < _particles.size() || _vertexBufferData->num_tex == 0) {
+				_vertexBufferData->points = (vec3*)brealloc(_vertexBufferData->points, sizeof(vec3) * _vertexBufferData->num);
+				_vertexBufferData->normals = (vec3*)brealloc(_vertexBufferData->normals, sizeof(vec3) * _vertexBufferData->num);
+				_vertexBufferData->tangents = (vec3*)brealloc(_vertexBufferData->tangents, sizeof(vec3) * _vertexBufferData->num);
+				_vertexBufferData->colors = (uint32_t*)brealloc(_vertexBufferData->colors, sizeof(uint32_t) * _vertexBufferData->num);
 
-			/*Transform*/
-			vec3 zeroed;
-			vec3_zero(&zeroed);
-			std::for_each(_particles.begin(), _particles.end(), [&zeroed](transformAlpha &p) {
-				matrix4_mul(&p.position, &p.position, &p.transform);
-				//cache position for z ordering
-				vec3_transform(&p.pos, &zeroed, &p.position);
-			});
-
-			float w = 1.0f;
-			float h = 1.0f;
-			vec4 verts[4] = { 0,0,0,0 };
-			vec4_set(&verts[0], -w / 2.0, -h / 2.0, 0, 0);
-			vec4_set(&verts[1], w / 2.0, -h / 2.0, 0, 0);
-			vec4_set(&verts[2], -w / 2.0, h / 2.0, 0, 0);
-			vec4_set(&verts[3], w / 2.0, h / 2.0, 0, 0);
-
-			std::vector<transformAlpha>::iterator it = std::partition(_particles.begin(),
-				_particles.end(), [&verts](transformAlpha &p) {
-				bool in_view = false;
-				for (int j = 0; j < 4; j++) {
-					vec3_transform(&p.v.ptr[j], (vec3*)&verts[j], &p.position);
-					in_view = in_view || (p.alpha > 0) && (fabsf(p.v.ptr[j].x) <= 1.0 &&
-						fabsf(p.v.ptr[j].y) <= 1.0);
+				if (!_vertexBufferData->tvarray)
+					_vertexBufferData->tvarray = (gs_tvertarray*)bzalloc(sizeof(gs_tvertarray));
+				_vertexBufferData->tvarray->array = (vec4*)brealloc(_vertexBufferData->tvarray->array, sizeof(vec4) * _vertexBufferData->num);
+				vec4 *ar = (vec4*)_vertexBufferData->tvarray->array;
+				for (size_t i = 0; i < _vertexBufferData->num;) {
+					vec4_set(&ar[i++], 0, 0, 0, 0);
+					vec4_set(&ar[i++], 1, 0, 0, 0);
+					vec4_set(&ar[i++], 0, 1, 0, 0);
+					vec4_set(&ar[i++], 1, 1, 0, 0);
 				}
-
-				return in_view;
-			});
-
-			if (_despawnOutOfView) {
-				_particles.erase(it, _particles.end());
-				std::stable_sort(_particles.begin(), _particles.end(), zOrder);
-			} else {
-				std::stable_sort(_particles.begin(), it, zOrder);
+				_vertexBufferData->tvarray->width = 4;
+				_vertexBufferData->num_tex = 1;
 			}
 
-			if (_particles.size() == 0) {
-				obs_leave_graphics();
-				return;
-			}
+			vb = _vertexBufferData;
+		} else {
+			vb = (gs_vb_data *)gs_vertexbuffer_get_data(_vertexBuffer);
+		}
 
-			gs_vb_data *vb;
-			if (!_vertexBufferData || oldSize != _particles.size()) {
+		for (size_t i = 0; i < _particles.size(); i++) {
+			transformAlpha *p = &_particles[i];
+			float alpha = p->alpha / 255.0;
+			size_t row = i * 4;
+			for (size_t j = 0; j < 4; j++) {
+				vec3_set(&vb->normals[row + j], alpha, alpha, alpha);
+				vec3_copy(&vb->points[row + j], &p->v.ptr[j]);
+			}
+		}
+
+		if (!_vertexBuffer) {
+			_vertexBuffer = gs_vertexbuffer_create(_vertexBufferData, GS_DYNAMIC | GS_DUP_BUFFER);
+		} else {
+			if (oldSize != _particles.size()) {
 				if (_vertexBuffer) {
 					gs_vertexbuffer_destroy(_vertexBuffer);
 					_vertexBuffer = nullptr;
 				}
-				// Allocate memory for data.
-				size_t vCap = 4 * _particles.size();
-				if (!_vertexBufferData) {
-					_vertexBufferData = (struct gs_vb_data*)bzalloc(sizeof(struct gs_vb_data));
-				}
-				_vertexBufferData->num = vCap;
-
-				if (oldSize < _particles.size() || _vertexBufferData->num_tex == 0) {
-					_vertexBufferData->points = (vec3*)brealloc(_vertexBufferData->points, sizeof(vec3) * _vertexBufferData->num);
-					_vertexBufferData->normals = (vec3*)brealloc(_vertexBufferData->normals, sizeof(vec3) * _vertexBufferData->num);
-					_vertexBufferData->tangents = (vec3*)brealloc(_vertexBufferData->tangents, sizeof(vec3) * _vertexBufferData->num);
-					_vertexBufferData->colors = (uint32_t*)brealloc(_vertexBufferData->colors, sizeof(uint32_t) * _vertexBufferData->num);
-
-					if (!_vertexBufferData->tvarray)
-						_vertexBufferData->tvarray = (gs_tvertarray*)bzalloc(sizeof(gs_tvertarray));
-					_vertexBufferData->tvarray->array = (vec4*)brealloc(_vertexBufferData->tvarray->array, sizeof(vec4) * _vertexBufferData->num);
-					vec4 *ar = (vec4*)_vertexBufferData->tvarray->array;
-					for (size_t i = 0; i < _vertexBufferData->num;) {
-						vec4_set(&ar[i++], 0, 0, 0, 0);
-						vec4_set(&ar[i++], 1, 0, 0, 0);
-						vec4_set(&ar[i++], 0, 1, 0, 0);
-						vec4_set(&ar[i++], 1, 1, 0, 0);
-					}
-					_vertexBufferData->tvarray->width = 4;
-					_vertexBufferData->num_tex = 1;
-				}
-
-				vb = _vertexBufferData;
-			} else {
-				vb = (gs_vb_data *)gs_vertexbuffer_get_data(_vertexBuffer);
-			}
-
-			for (size_t i = 0; i < _particles.size(); i++) {
-				transformAlpha *p = &_particles[i];
-				float alpha = p->alpha / 255.0;
-				size_t row = i * 4;
-				for (size_t j = 0; j < 4; j++) {
-					vec3_set(&vb->normals[row + j], alpha, alpha, alpha);
-					vec3_copy(&vb->points[row + j], &p->v.ptr[j]);
-				}
-			}
-
-			if (!_vertexBuffer) {
 				_vertexBuffer = gs_vertexbuffer_create(_vertexBufferData, GS_DYNAMIC | GS_DUP_BUFFER);
-			} else {
-				if (oldSize != _particles.size()) {
-					if (_vertexBuffer) {
-						gs_vertexbuffer_destroy(_vertexBuffer);
-						_vertexBuffer = nullptr;
-					}
-					_vertexBuffer = gs_vertexbuffer_create(_vertexBufferData, GS_DYNAMIC | GS_DUP_BUFFER);
-				}
 			}
+		}
 
-			if (!_indexBuffer) {
+		if (!_indexBuffer) {
+			indexBuffer(_indexBufferData, _particles.size());
+			_indexBuffer = gs_indexbuffer_create(gs_index_type::GS_UNSIGNED_LONG, _indexBufferData.data(), _particles.size() * 6, GS_DYNAMIC | GS_DUP_BUFFER);
+		} else {
+			if (_particles.size() > oldSize) {
+				gs_indexbuffer_destroy(_indexBuffer);
 				indexBuffer(_indexBufferData, _particles.size());
 				_indexBuffer = gs_indexbuffer_create(gs_index_type::GS_UNSIGNED_LONG, _indexBufferData.data(), _particles.size() * 6, GS_DYNAMIC | GS_DUP_BUFFER);
-			} else {
-				if (_particles.size() > oldSize) {
-					gs_indexbuffer_destroy(_indexBuffer);
-					indexBuffer(_indexBufferData, _particles.size());
-					_indexBuffer = gs_indexbuffer_create(gs_index_type::GS_UNSIGNED_LONG, _indexBufferData.data(), _particles.size() * 6, GS_DYNAMIC | GS_DUP_BUFFER);
-				}
 			}
 		}
 		obs_leave_graphics();
@@ -2062,29 +2080,6 @@ public:
 		case image:
 			t = _image ? _image->texture : NULL;
 			break;
-		case random:
-			pixels = srcHeight * srcWidth;
-			if (!_data)
-				_data = (uint8_t *)bmalloc(pixels);
-
-			if (_range_0 < _range_1) {
-				for (i = 0; i < pixels; i++)
-					_data[i] = (uint8_t)random_int(_range_0, _range_1);
-			} else {
-				for (i = 0; i < pixels; i++) {
-					u = (uint8_t)random_int(0, _range_1 + (255 - _range_0));
-					if (u > _range_1)
-						u += _range_1 - _range_0;
-					_data[i] = u;
-				}
-			}
-
-			obs_enter_graphics();
-			gs_texture_destroy(_tex);
-			_tex = gs_texture_create((uint32_t)srcWidth, (uint32_t)srcHeight, GS_R8, 1, (const uint8_t **)&_data, 0);
-			obs_leave_graphics();
-			t = _tex;
-			break;
 		case buffer:
 			t = _tex;
 			break;
@@ -2095,8 +2090,6 @@ public:
 		if (_isParticle) {
 			if (!_particlerender)
 				_particlerender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-
-			gs_texrender_reset(_particlerender);
 
 			if (gs_texrender_begin(_particlerender, _filter->totalWidth, _filter->totalHeight)) {
 				gs_set_cull_mode(GS_NEITHER);
@@ -2720,24 +2713,6 @@ void ShaderSource::videoTickSource(void *data, float seconds)
 	filter->uvOffsetBinding = filter->uvOffset;
 }
 
-static inline void renderSprite(ShaderSource *filter, gs_effect_t *effect, gs_texture_t *texture, const char *techName, uint32_t &cx, uint32_t &cy)
-{
-	size_t i, j;
-	gs_technique_t *tech = gs_effect_get_technique(effect, techName);
-	size_t passes = gs_technique_begin(tech);
-	for (i = 0; i < passes; i++) {
-		gs_technique_begin_pass(tech, i);
-		gs_draw_sprite(texture, 0, cx, cy);
-		gs_technique_end_pass(tech);
-		/*Handle Buffers*/
-		for (j = 0; j < filter->paramList.size(); j++)
-			filter->paramList[j]->onPass(filter, techName, i, texture);
-	}
-	gs_technique_end(tech);
-	for (j = 0; j < filter->paramList.size(); j++)
-		filter->paramList[j]->onTechniqueEnd(filter, techName, texture);
-}
-
 void ShaderSource::videoRender(void *data, gs_effect_t *effect)
 {
 	UNUSED_PARAMETER(effect);
@@ -3010,6 +2985,8 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 
 			gs_effect_set_texture(filter->image, texture);
 			renderSprite(filter, effect, texture, techName, cx, cy);
+		} else {
+			renderNothing(filter, cx, cy);
 		}
 	}
 }
@@ -3321,6 +3298,35 @@ static bool shader_filter_edit_effect_clicked(obs_properties_t *props, obs_prope
 	return true;
 }
 
+bool loadModuleEffect(gs_effect_t **effect, std::string name)
+{
+	if (!effect)
+		return false;
+	char *errors = NULL;
+	char *cpath = obs_module_file(name.c_str());
+	std::string path = cpath;
+	/* Load default effect text if no file is selected */
+	char *effect_string = nullptr;
+	if (!path.empty()) {
+		effect_string = os_quick_read_utf8_file(path.c_str());
+	} else {
+		bfree(effect_string);
+		bfree(cpath);
+		return false;
+	}
+
+	obs_enter_graphics();
+	if (!*effect)
+		*effect = gs_effect_create(effect_string, NULL, &errors);
+	if (errors)
+		blog(LOG_DEBUG, "%s", errors);
+	obs_leave_graphics();
+
+	bfree(effect_string);
+	bfree(cpath);
+	return true;
+}
+
 bool obs_module_load(void)
 {
 	screenMutex = new PThreadMutex();
@@ -3387,28 +3393,8 @@ bool obs_module_load(void)
 	sample_rate = (double)aoi.samples_per_sec;
 	output_channels = (double)get_audio_channels(aoi.speakers);
 
-	char *errors = NULL;
-	char *cpath = obs_module_file("default.effect");
-	std::string path = cpath;
-	/* Load default effect text if no file is selected */
-	char *effect_string = nullptr;
-	if (!path.empty()) {
-		effect_string = os_quick_read_utf8_file(path.c_str());
-	} else {
-		bfree(effect_string);
-		bfree(cpath);
+	if (!loadModuleEffect(&default_effect, "default.effect"))
 		return false;
-	}
-
-	obs_enter_graphics();
-	if (!default_effect)
-		default_effect = gs_effect_create(effect_string, NULL, &errors);
-	if (errors)
-		blog(LOG_DEBUG, "%s", errors);
-	obs_leave_graphics();
-
-	bfree(effect_string);
-	bfree(cpath);
 
 	return true;
 }
