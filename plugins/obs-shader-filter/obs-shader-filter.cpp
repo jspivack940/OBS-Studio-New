@@ -895,6 +895,7 @@ public:
 	void init(gs_shader_param_type paramType)
 	{
 		ShaderData::init(paramType);
+		size_t i;
 		_isFloat = isFloatType(paramType);
 		_isInt = isIntType(paramType);
 		_skipWholeProperty = _bind ? true : false;
@@ -905,8 +906,15 @@ public:
 		_default.reserve(_dataCount);
 		_disableProperty.reserve(_dataCount);
 		_skipProperty.reserve(_dataCount);
+		for (i = 0; i < _dataCount; i++) {
+			_min.push_back(0);
+			_max.push_back(0);
+			_step.push_back(0);
+			_default.push_back(0);
+			_disableProperty.push_back(0);
+			_skipProperty.push_back(0);
+		}
 
-		size_t i;
 		std::string strNum = "";
 		for (i = 0; i < _dataCount; i++) {
 			if (_dataCount > 1)
