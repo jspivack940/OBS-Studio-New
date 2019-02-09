@@ -1444,6 +1444,7 @@ protected:
 	std::vector<float> _tempAudio[MAX_AV_PLANES];
 	bool               _isFFT = false;
 	bool               _isParticle = false;
+	bool               _bufferCopied = false;
 	std::vector<float> _fft_data[MAX_AV_PLANES];
 	size_t             _channels = 0;
 	size_t             _maxAudioSize = AUDIO_OUTPUT_FRAMES * 2;
@@ -1909,6 +1910,9 @@ public:
 			_sourceWidth = obs_source_get_width(filter->context);
 			_sourceHeight = obs_source_get_height(filter->context);
 			break;
+		case buffer:
+			_bufferCopied = false;
+			break;
 		default:
 			break;
 		}
@@ -2141,38 +2145,48 @@ public:
 		}
 	}
 
+	inline void copyBuffer(gs_texture_t *texture)
+	{
+		if (_bufferCopied) {
+			_param->setValue<gs_texture_t *>(&_tex, sizeof(gs_texture *));
+			return;
+		}
+		double tw = 0;
+		double th = 0;
+		size_t bytes = 0;
+		size_t size = 0;
+		if (_tex) {
+			tw = gs_texture_get_width(_tex);
+			th = gs_texture_get_height(_tex);
+		}
+		bytes = 4 * 4 * tw * th;
+		size = 4 * 4 * gs_texture_get_width(texture) * gs_texture_get_height(texture);
+
+		if (!_data || bytes != size) {
+			_data = (uint8_t*)brealloc(_data, size);
+			obs_enter_graphics();
+			if (_tex)
+				gs_texture_destroy(_tex);
+			obs_leave_graphics();
+			_tex = nullptr;
+		}
+		if (!_tex)
+			_tex = gs_texture_create(gs_texture_get_width(texture), gs_texture_get_height(texture), gs_texture_get_color_format(texture), 1, (const uint8_t **)&_data, 0);
+
+		obs_enter_graphics();
+		gs_copy_texture(_tex, texture);
+		_param->setValue<gs_texture_t *>(&_tex, sizeof(gs_texture *));
+		obs_leave_graphics();
+		_bufferCopied = true;
+	}
+
 	void onPass(ShaderSource *filter, const char *technique, size_t pass, gs_texture_t *texture)
 	{
 		UNUSED_PARAMETER(filter);
 		if (_texType == buffer) {
 			std::string tech = technique;
 			if (tech == _tech && pass == _pass) {
-				double tw = 0;
-				double th = 0;
-				size_t bytes = 0;
-				size_t size = 0;
-				if (_tex) {
-					tw = gs_texture_get_width(_tex);
-					th = gs_texture_get_height(_tex);
-				}
-				bytes = 4 * 4 * tw * th;
-				size = 4 * 4 * gs_texture_get_width(texture) * gs_texture_get_height(texture);
-
-				if (!_data || bytes != size) {
-					_data = (uint8_t*)brealloc(_data, size);
-					obs_enter_graphics();
-					if (_tex)
-						gs_texture_destroy(_tex);
-					obs_leave_graphics();
-					_tex = nullptr;
-				}
-				if (!_tex)
-					_tex = gs_texture_create(gs_texture_get_width(texture), gs_texture_get_height(texture), gs_texture_get_color_format(texture), 1, (const uint8_t **)&_data, 0);
-
-				obs_enter_graphics();
-				gs_copy_texture(_tex, texture);
-				_param->setValue<gs_texture_t *>(&_tex, sizeof(gs_texture *));
-				obs_leave_graphics();
+				copyBuffer(texture);
 			}
 		}
 	}
@@ -2183,32 +2197,7 @@ public:
 		if (_texType == buffer) {
 			std::string tech = technique;
 			if (tech == _tech && _pass == -1) {
-				double tw = 0;
-				double th = 0;
-				size_t bytes = 0;
-				size_t size = 0;
-				if (_tex) {
-					tw = gs_texture_get_width(_tex);
-					th = gs_texture_get_height(_tex);
-				}
-				bytes = 4 * 4 * tw * th;
-				size = 4 * 4 * gs_texture_get_width(texture) * gs_texture_get_height(texture);
-
-				if (!_data || bytes != size) {
-					_data = (uint8_t*)brealloc(_data, size);
-					obs_enter_graphics();
-					if (_tex)
-						gs_texture_destroy(_tex);
-					_tex = nullptr;
-					obs_leave_graphics();
-				}
-				if (!_tex)
-					_tex = gs_texture_create(gs_texture_get_width(texture), gs_texture_get_height(texture), gs_texture_get_color_format(texture), 1, (const uint8_t **)&_data, 0);
-
-				obs_enter_graphics();
-				gs_copy_texture(_tex, texture);
-				_param->setValue<gs_texture_t *>(&_tex, sizeof(gs_texture *));
-				obs_leave_graphics();
+				copyBuffer(texture);
 			}
 		}
 	}
