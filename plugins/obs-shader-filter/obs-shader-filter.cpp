@@ -2427,9 +2427,13 @@ void ShaderSource::appendVariable(std::string &name, double *binding)
 void ShaderSource::compileExpression(std::string expr)
 {
 	expression.compile(expr);
-	if (!expressionCompiled())
-		blog(LOG_WARNING, "%s failed to compile %s", obs_source_get_name(obs_filter_get_parent(context)),
-			expr.c_str());
+	if (!expressionCompiled()) {
+		blog(LOG_WARNING, "%s failed to compile %s",
+				getType() == OBS_SOURCE_TYPE_FILTER ?
+				obs_source_get_name(obs_filter_get_parent(context)) :
+				obs_source_get_name(context),
+				expr.c_str());
+	}
 }
 
 bool ShaderSource::expressionCompiled()
