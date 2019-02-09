@@ -911,8 +911,8 @@ public:
 			_max.push_back(0);
 			_step.push_back(0);
 			_default.push_back(0);
-			_disableProperty.push_back(0);
-			_skipProperty.push_back(0);
+			_disableProperty.push_back(false);
+			_skipProperty.push_back(false);
 		}
 
 		std::string strNum = "";
@@ -995,19 +995,15 @@ public:
 
 		bool hasExpressions = false;
 		for (i = 0; i < _expressions.size(); i++) {
-			if (_expressions[i].empty()) {
-				_disableProperty.push_back(false);
-				_skipProperty.push_back(false);
+			if (_expressions[i].empty())
 				continue;
-			}
+
 			hasExpressions = true;
 			_filter->compileExpression(_expressions[i]);
 			if (_filter->expressionCompiled()) {
-				_disableProperty.push_back(false);
-				_skipProperty.push_back(true);
+				_skipProperty[i] = true;
 			} else {
-				_disableProperty.push_back(true);
-				_skipProperty.push_back(false);
+				_disableProperty[i] = true;
 				_tooltips[i] = _filter->expressionError();
 			}
 		}
@@ -2130,8 +2126,6 @@ public:
 							gs_technique_end_pass(tech);
 						}
 						gs_technique_end(tech);
-					} else {
-						blog(LOG_WARNING, "No Particle!");
 					}
 				}
 
@@ -2140,12 +2134,9 @@ public:
 				tex = gs_texrender_get_texture(_particlerender);
 				if (tex)
 					_param->setValue<gs_texture_t *>(&tex, sizeof(gs_texture_t *));
-				else
-					blog(LOG_WARNING, "No Particle Output!");
 			}
 		} else {
-			if (_param)
-				_param->setValue<gs_texture_t *>(&t, sizeof(gs_texture_t *));
+			_param->setValue<gs_texture_t *>(&t, sizeof(gs_texture_t *));
 		}
 	}
 
@@ -2237,20 +2228,6 @@ static void sidechain_capture(void *p, obs_source_t *source, const struct audio_
 			data->insertAudio((float *)audio_data->data[i], audio_data->frames, i);
 	}
 }
-
-class NullData : public ShaderData {
-public:
-	NullData(ShaderParameter *parent, ShaderSource *filter) : ShaderData(parent, filter)
-	{
-	};
-	~NullData()
-	{
-	};
-	void init(gs_shader_param_type paramType)
-	{
-		UNUSED_PARAMETER(paramType);
-	}
-};
 
 std::string ShaderParameter::getName()
 {
@@ -2673,6 +2650,10 @@ void ShaderSource::videoTick(void *data, float seconds)
 
 	filter->uvScaleBinding = filter->uvScale;
 	filter->uvOffsetBinding = filter->uvOffset;
+
+	if (!filter->filterTexrender)
+		filter->filterTexrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+	gs_texrender_reset(filter->filterTexrender);
 }
 
 void ShaderSource::videoTickSource(void *data, float seconds)
@@ -2719,6 +2700,10 @@ void ShaderSource::videoTickSource(void *data, float seconds)
 
 	filter->uvScaleBinding = filter->uvScale;
 	filter->uvOffsetBinding = filter->uvOffset;
+
+	if (!filter->filterTexrender)
+		filter->filterTexrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+	gs_texrender_reset(filter->filterTexrender);
 }
 
 void ShaderSource::videoRender(void *data, gs_effect_t *effect)
@@ -2832,7 +2817,6 @@ static inline void renderNothing(ShaderSource *filter, const uint32_t &cx, const
 	gs_blend_state_push();
 	gs_blend_function(GS_BLEND_ONE, GS_BLEND_ZERO);
 
-	gs_texrender_reset(filter->filterTexrender);
 	if (gs_texrender_begin(filter->filterTexrender, cx, cy)) {
 		struct vec4 clearColor;
 
@@ -2854,7 +2838,7 @@ void ShaderSource::videoRenderSource(void *data, gs_effect_t *effect)
 
 	obs_source_t *source;
 	gs_texture_t *texture;
-	uint32_t      parentFlags;
+	//uint32_t      parentFlags;
 
 	source = filter->context;
 
@@ -2875,14 +2859,7 @@ void ShaderSource::videoRenderSource(void *data, gs_effect_t *effect)
 				filter->paramList[i]->videoRender(filter);
 		}
 
-		if (!filter->filterTexrender)
-			filter->filterTexrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-
-		const char *id = obs_source_get_id(source);
-		parentFlags = obs_get_source_output_flags(id);
-
 		renderNothing(filter, cx, cy);
-
 		texture = gs_texrender_get_texture(filter->filterTexrender);
 		if (texture) {
 			const char *techName = "Draw";
@@ -2915,7 +2892,7 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 {
 	ShaderSource *filter = static_cast<ShaderSource *>(data);
 	size_t i, j, passes;
-	uint32_t      parentFlags;
+	//uint32_t      parentFlags;
 	gs_texture_t *texture;
 	obs_source_t *source = filter->context;
 
@@ -2961,17 +2938,8 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 				filter->paramList[i]->videoRender(filter);
 		}
 
-		if (!filter->filterTexrender)
-			filter->filterTexrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-
-
-		const char *id = obs_source_get_id(source);
-		parentFlags = obs_get_source_output_flags(id);
-
 		renderNothing(filter, cx, cy);
-
 		texture = gs_texrender_get_texture(filter->filterTexrender);
-
 		if (a || b) {
 			const char *techName = "Draw";
 			if (filter->image)
@@ -2983,7 +2951,6 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 	} else {
 		/* Cut Effect */
 		texture = b;
-
 		if (texture) {
 			const char *techName = "Draw";
 
