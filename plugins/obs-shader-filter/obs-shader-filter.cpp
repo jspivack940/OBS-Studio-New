@@ -1917,6 +1917,7 @@ public:
 			obs_leave_graphics();
 			return;
 		}
+
 		gs_texrender_reset(_particlerender);
 
 		const float rate = 1.0f / frame_rate;
@@ -2095,6 +2096,7 @@ public:
 			if (!_particlerender)
 				_particlerender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
 
+			gs_texture_t *tex = nullptr;
 			if (gs_texrender_begin(_particlerender, _filter->totalWidth, _filter->totalHeight)) {
 				gs_set_cull_mode(GS_NEITHER);
 				gs_enable_depth_test(false);
@@ -2106,7 +2108,7 @@ public:
 				vec4_zero(&clearColor);
 
 				gs_clear(GS_CLEAR_COLOR | GS_CLEAR_DEPTH, &clearColor, farZ, 0);
-				gs_texture_t *tex;
+				
 
 				if (_particles.size() > 0) {
 					if (t && _vertexBuffer && _indexBuffer) {
@@ -2130,11 +2132,10 @@ public:
 				}
 
 				gs_texrender_end(_particlerender);
-
-				tex = gs_texrender_get_texture(_particlerender);
-				if (tex)
-					_param->setValue<gs_texture_t *>(&tex, sizeof(gs_texture_t *));
 			}
+			tex = gs_texrender_get_texture(_particlerender);
+			if (tex)
+				_param->setValue<gs_texture_t *>(&tex, sizeof(gs_texture_t *));
 		} else {
 			_param->setValue<gs_texture_t *>(&t, sizeof(gs_texture_t *));
 		}
