@@ -2,7 +2,7 @@
 
 #include <obs.h>
 #include <math.h>
-#include <libavcodec\avfft.h>
+#include <libavcodec/avfft.h>
 
 #ifdef __cplusplus
 extern "C" {
