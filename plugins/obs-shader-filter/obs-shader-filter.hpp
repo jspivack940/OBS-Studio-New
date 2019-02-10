@@ -360,7 +360,7 @@ public:
 
 	float          elapsedTime = 0;
 	float          transitionPercentage = 0;
-	in_shader_data elapsedTimeBinding = { 0 };
+	in_shader_data elapsedTimeBinding;
 
 	vec2 uvScale;
 	vec2 uvOffset;

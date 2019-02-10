@@ -85,7 +85,7 @@ static double dfloor(double d)
 	return floor(d);
 }
 
-static struct particlePoints {
+struct particlePoints {
 	union {
 		struct {
 			vec3 tl, tr, bl, br;
@@ -94,7 +94,7 @@ static struct particlePoints {
 	};
 };
 
-static struct transformAlpha {
+struct transformAlpha {
 	matrix4 position;
 	matrix4 transform;
 	vec3 pos;
@@ -165,30 +165,38 @@ static gs_effect_t *default_effect = nullptr;
 static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 {
 	std::vector<te_variable> funcs = {
-	{"clamp", hlsl_clamp, TE_FUNCTION3 | TE_FLAG_PURE},
-	{"channels", &output_channels}, {"degrees", hlsl_degrees, TE_FUNCTION1 | TE_FLAG_PURE},
-	{"float_max", &flt_max},
-	{"float_min", &flt_min}, {"hz_from_mel", audio_hz_from_mel, TE_FUNCTION1 | TE_FLAG_PURE},
-	{"int_max", &int_max}, {"int_min", &int_min},
-	{"key", &filter->_key}, {"key_pressed", &filter->_keyUp},
-	{"sample_rate", &sample_rate},
-	{"mel_from_hz", audio_mel_from_hz, TE_FUNCTION1 | TE_FLAG_PURE},
-	{"mouse_click_x", &filter->_mouseClickX},
-	{"mouse_click_y", &filter->_mouseClickY},
-	{"mouse_event_pos_x", &filter->_mouseX}, {"mouse_event_pos_y", &filter->_mouseY},
-	{"mouse_type", &filter->_mouseType},
-	{"mouse_up", &filter->_mouseUp},
-	{"mouse_wheel_delta_x", &filter->_mouseWheelDeltaX},
-	{"mouse_wheel_delta_y", &filter->_mouseWheelDeltaY}, {"mouse_wheel_x", &filter->_mouseWheelX},
-	{"mouse_wheel_y", &filter->_mouseWheelY}, {"mouse_leave", &filter->_mouseLeave},
-	{"radians", hlsl_rad, TE_FUNCTION1 | TE_FLAG_PURE}, {"random", random_double, TE_FUNCTION2},
-	{"mouse_pos_x", &filter->_screenMousePosX},
-	{"mouse_pos_y", &filter->_screenMousePosY},
-	{"screen_mouse_visible", &filter->_screenMouseVisible},
+	{"clamp", hlsl_clamp, TE_FUNCTION3 | TE_FLAG_PURE, 0},
+	{"channels", &output_channels, 0, 0},
+	{"degrees", hlsl_degrees, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+	{"float_max", &flt_max, 0, 0},
+	{"float_min", &flt_min, 0, 0},
+	{"hz_from_mel", audio_hz_from_mel, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+	{"int_max", &int_max, 0, 0},
+	{"int_min", &int_min, 0, 0},
+	{"key", &filter->_key, 0, 0},
+	{"key_pressed", &filter->_keyUp, 0, 0},
+	{"sample_rate", &sample_rate, 0, 0},
+	{"mel_from_hz", audio_mel_from_hz, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+	{"mouse_click_x", &filter->_mouseClickX, 0, 0},
+	{"mouse_click_y", &filter->_mouseClickY, 0, 0},
+	{"mouse_event_pos_x", &filter->_mouseX, 0, 0},
+	{"mouse_event_pos_y", &filter->_mouseY, 0, 0},
+	{"mouse_type", &filter->_mouseType, 0, 0},
+	{"mouse_up", &filter->_mouseUp, 0, 0},
+	{"mouse_wheel_delta_x", &filter->_mouseWheelDeltaX, 0, 0},
+	{"mouse_wheel_delta_y", &filter->_mouseWheelDeltaY, 0, 0},
+	{"mouse_wheel_x", &filter->_mouseWheelX, 0, 0},
+	{"mouse_wheel_y", &filter->_mouseWheelY, 0, 0},
+	{"mouse_leave", &filter->_mouseLeave, 0, 0},
+	{"radians", hlsl_rad, TE_FUNCTION1 | TE_FLAG_PURE, 0},
+	{"random", random_double, TE_FUNCTION2, 0},
+	{"mouse_pos_x", &filter->_screenMousePosX, 0, 0},
+	{"mouse_pos_y", &filter->_screenMousePosY, 0, 0},
+	{"screen_mouse_visible", &filter->_screenMouseVisible, 0, 0},
 	{"screen_height", static_cast<double(*)(double)>(getScreenHeight), TE_FUNCTION1, 0},
 	{"screen_width", static_cast<double(*)(double)>(getScreenWidth), TE_FUNCTION1, 0},
 	{"mouse_screen", &filter->_screenIndex},
-	{"mix", &filter->mixPercent},
+	{"mix", &filter->mixPercent, 0, 0},
 	{"max", dmax, TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	{"min", dmin, TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	/* Basic functions originally included in TinyExpr */
@@ -200,7 +208,7 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 	{"ceil", static_cast<double(*)(double)>(dceil),   TE_FUNCTION1 | TE_FLAG_PURE, 0},
 	{"cos", static_cast<double(*)(double)>(cos),      TE_FUNCTION1 | TE_FLAG_PURE, 0},
 	{"cosh", static_cast<double(*)(double)>(cosh),    TE_FUNCTION1 | TE_FLAG_PURE, 0},
-	{"e", &e},
+	{"e", &e, 0, 0},
 	//static_cast<double(*)()>(e), TE_FUNCTION0 | TE_FLAG_PURE, 0 },
 	{"exp", static_cast<double(*)(double)>(exp),      TE_FUNCTION1 | TE_FLAG_PURE, 0},
 	{"fac", static_cast<double(*)(double)>(fac),      TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -214,7 +222,7 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 	{"log10", static_cast<double(*)(double)>(log10),  TE_FUNCTION1 | TE_FLAG_PURE, 0},
 	{"ncr", static_cast<double(*)(double, double)>(ncr),      TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	{"npr", static_cast<double(*)(double, double)>(npr),      TE_FUNCTION2 | TE_FLAG_PURE, 0},
-	{"pi", &pi},
+	{"pi", &pi, 0, 0},
 	//{"pi", static_cast<double(*)()>(pi),              TE_FUNCTION0 | TE_FLAG_PURE, 0},
 	{"pow", static_cast<double(*)(double, double)>(pow),      TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	{"sin", static_cast<double(*)(double)>(sin),      TE_FUNCTION1 | TE_FLAG_PURE, 0},
@@ -277,6 +285,8 @@ int getDataSize(enum gs_shader_param_type type)
 		return 1;
 	case GS_SHADER_PARAM_MATRIX4X4:
 		return 16;
+	default:
+		break;
 	}
 	return 0;
 }
@@ -290,6 +300,8 @@ bool isFloatType(enum gs_shader_param_type type)
 	case GS_SHADER_PARAM_FLOAT:
 	case GS_SHADER_PARAM_MATRIX4X4:
 		return true;
+	default:
+		break;
 	}
 	return false;
 }
@@ -302,6 +314,8 @@ bool isIntType(enum gs_shader_param_type type)
 	case GS_SHADER_PARAM_INT3:
 	case GS_SHADER_PARAM_INT4:
 		return true;
+	default:
+		break;
 	}
 	return false;
 }
@@ -362,6 +376,8 @@ public:
 			for (i = 0; i < dInt.size(); i++)
 				dFloat.push_back((float)dInt[i]);
 			break;
+		default:
+			break;
 		}
 		return dFloat;
 	}
@@ -404,6 +420,8 @@ public:
 			len = size / sizeof(int);
 			dInt.assign(ptrInt, ptrInt + len);
 			break;
+		default:
+			break;
 		}
 		return dInt;
 	}
@@ -445,6 +463,8 @@ public:
 			dBool.reserve(len);
 			for (i = 0; i < dInt.size(); i++)
 				dBool.push_back(dInt[i]);
+			break;
+		default:
 			break;
 		}
 		return dBool;
@@ -1750,6 +1770,8 @@ public:
 			p = obs_properties_add_path(props, _names[0].c_str(), _descs[0].c_str(), OBS_PATH_FILE,
 				shader_filter_texture_file_filter, NULL);
 			break;
+		default:
+			break;
 		}
 	}
 
@@ -1817,6 +1839,8 @@ public:
 				gs_image_file_init_texture(_image);
 				obs_leave_graphics();
 			}
+			break;
+		default:
 			break;
 		}
 	}
@@ -2442,6 +2466,7 @@ template<class DataType> DataType ShaderSource::evaluateExpression(DataType defa
 
 ShaderSource::ShaderSource(obs_data_t *settings, obs_source_t *source)
 {
+	elapsedTimeBinding.s64i = 0;
 	context = source;
 	_source_type = obs_source_get_type(source);
 	_settings = settings;
