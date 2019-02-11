@@ -162,7 +162,7 @@ static gs_effect_t *default_effect = nullptr;
 #define WRAPVOID(x) reinterpret_cast<void*>(x)
 
 /* Includes basic functions originally included in TinyExpr */
-static const std::vector<te_variable> te_funcs = {
+static const std::vector<te_variable> te_funcs({
 	{"clamp", WRAPVOID(&hlsl_clamp), TE_FUNCTION3 | TE_FLAG_PURE, nullptr},
 	{"channels", &output_channels, TE_VARIABLE, nullptr},
 	{"degrees", WRAPVOID(&hlsl_degrees), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
@@ -201,12 +201,12 @@ static const std::vector<te_variable> te_funcs = {
 	{"sqrt", WRAPVOID(static_cast<double(*)(double)>(&sqrt)),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"tan", WRAPVOID(static_cast<double(*)(double)>(&tan)),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"tanh", WRAPVOID(static_cast<double(*)(double)>(&tanh)),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-};
+});
 
 /* Additional likely to be used functions for mathmatical expressions */
 static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 {
-	std::vector<te_variable> filter_funcs = {
+	std::vector<te_variable> filter_funcs({
 		{"key", &filter->_key, TE_VARIABLE, nullptr},
 		{"key_pressed", &filter->_keyUp, TE_VARIABLE, nullptr},
 		{"sample_rate", &sample_rate, TE_VARIABLE, nullptr},
@@ -231,13 +231,15 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 		{"screen_width", WRAPVOID(static_cast<double(*)(double)>(&getScreenWidth)), TE_FUNCTION1, nullptr},
 		{"mouse_screen", &filter->_screenIndex, TE_VARIABLE, nullptr},
 		{"mix", &filter->mixPercent, TE_VARIABLE, nullptr},
-	};
+	});
 
 	vars->reserve(vars->size() + filter_funcs.size() + te_funcs.size());
 	vars->insert(vars->end(), filter_funcs.begin(), filter_funcs.end());
 	vars->insert(vars->end(), te_funcs.begin(), te_funcs.end());
 
 }
+
+#undef WRAPVOID
 
 std::string toSnakeCase(std::string str)
 {
@@ -591,7 +593,7 @@ public:
 		EParam               *note = getAnnotation(name);
 		if (note)
 			ret = *(note->getValue());
-		if (index < ret.size())
+		if ((size_t)index < ret.size())
 			return ret[index];
 		else
 			return defaultValue;
@@ -1437,6 +1439,8 @@ private:
 			if (sideChain) {
 				obs_source_add_audio_capture_callback(sideChain, sidechain_capture, this);
 				obs_source_add_active_child(_filter->context, sideChain);
+			} else {
+				blog(LOG_WARNING, "Source '%s' does not exist", name.c_str());
 			}
 			_mediaSource = sideChain;
 			unlock();
@@ -2728,11 +2732,10 @@ void ShaderSource::videoRender(void *data, gs_effect_t *effect)
 	size_t        passes, i, j;
 
 	if (filter->effect != nullptr) {
-		obs_source_t *target, *parent, *source;
+		obs_source_t *target, *parent;
 		gs_texture_t *texture;
 		uint32_t      parentFlags;
 
-		source = filter->context;
 		target = obs_filter_get_target(filter->context);
 		parent = obs_filter_get_parent(filter->context);
 
@@ -3154,7 +3157,7 @@ static void getScreenSizes(void *data)
 	UNUSED_PARAMETER(data);
 	if (screenMutex->trylock() == 0) {
 		QList<QScreen*> screens = QGuiApplication::screens();
-		size_t c = screenHeights.size();
+		int c = (int)screenHeights.size();
 		if (screens.count() > c) {
 			screenHeights.reserve(screens.count());
 			screenWidths.reserve(screens.count());

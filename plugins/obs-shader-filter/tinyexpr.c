@@ -73,7 +73,7 @@ typedef struct state {
 	void *context;
 
 	const te_variable *lookup;
-	te_variable *ordered_lookup;
+	const te_variable *ordered_lookup;
 	int lookup_len;
 } state;
 
@@ -128,7 +128,6 @@ static const te_variable *find_lookup(const state *s, const char *name, int len)
 {
 	int imin = 0;
 	int imax = s->lookup_len - 1;
-	int steps;
 	te_variable *var;
 	if (!s->ordered_lookup) return 0;
 	te_variable *out = NULL;
