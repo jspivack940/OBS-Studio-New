@@ -21,8 +21,6 @@ static void getMouseCursor(void *data);
 
 static void getScreenSizes(void *data);
 
-static double getMouseScreen();
-
 static const char *shader_filter_texture_file_filter = "Textures (*.bmp *.tga *.png *.jpeg *.jpg *.gif);;";
 
 static const char *shader_filter_media_file_filter =
@@ -154,7 +152,7 @@ static PThreadMutex *screenMutex = nullptr;
 static const double flt_max = FLT_MAX;
 static const double flt_min = FLT_MIN;
 static const double int_min = INT_MIN;
-static const  double int_max = INT_MAX;
+static const double int_max = INT_MAX;
 static double       sample_rate;
 static double       frame_rate;
 static double       output_channels;
@@ -166,37 +164,37 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 {
 	std::vector<te_variable> funcs = {
 	{"clamp", hlsl_clamp, TE_FUNCTION3 | TE_FLAG_PURE, 0},
-	{"channels", &output_channels, 0, 0},
+	{"channels", &output_channels, TE_VARIABLE, 0},
 	{"degrees", hlsl_degrees, TE_FUNCTION1 | TE_FLAG_PURE, 0},
-	{"float_max", &flt_max, 0, 0},
-	{"float_min", &flt_min, 0, 0},
+	{"float_max", &flt_max, TE_VARIABLE, 0},
+	{"float_min", &flt_min, TE_VARIABLE, 0},
 	{"hz_from_mel", audio_hz_from_mel, TE_FUNCTION1 | TE_FLAG_PURE, 0},
-	{"int_max", &int_max, 0, 0},
-	{"int_min", &int_min, 0, 0},
-	{"key", &filter->_key, 0, 0},
-	{"key_pressed", &filter->_keyUp, 0, 0},
-	{"sample_rate", &sample_rate, 0, 0},
+	{"int_max", &int_max, TE_VARIABLE, 0},
+	{"int_min", &int_min, TE_VARIABLE, 0},
+	{"key", &filter->_key, TE_VARIABLE, 0},
+	{"key_pressed", &filter->_keyUp, TE_VARIABLE, 0},
+	{"sample_rate", &sample_rate, TE_VARIABLE, 0},
 	{"mel_from_hz", audio_mel_from_hz, TE_FUNCTION1 | TE_FLAG_PURE, 0},
-	{"mouse_click_x", &filter->_mouseClickX, 0, 0},
-	{"mouse_click_y", &filter->_mouseClickY, 0, 0},
-	{"mouse_event_pos_x", &filter->_mouseX, 0, 0},
-	{"mouse_event_pos_y", &filter->_mouseY, 0, 0},
-	{"mouse_type", &filter->_mouseType, 0, 0},
-	{"mouse_up", &filter->_mouseUp, 0, 0},
-	{"mouse_wheel_delta_x", &filter->_mouseWheelDeltaX, 0, 0},
-	{"mouse_wheel_delta_y", &filter->_mouseWheelDeltaY, 0, 0},
-	{"mouse_wheel_x", &filter->_mouseWheelX, 0, 0},
-	{"mouse_wheel_y", &filter->_mouseWheelY, 0, 0},
-	{"mouse_leave", &filter->_mouseLeave, 0, 0},
+	{"mouse_click_x", &filter->_mouseClickX, TE_VARIABLE, 0},
+	{"mouse_click_y", &filter->_mouseClickY, TE_VARIABLE, 0},
+	{"mouse_event_pos_x", &filter->_mouseX, TE_VARIABLE, 0},
+	{"mouse_event_pos_y", &filter->_mouseY, TE_VARIABLE, 0},
+	{"mouse_type", &filter->_mouseType, TE_VARIABLE, 0},
+	{"mouse_up", &filter->_mouseUp, TE_VARIABLE, 0},
+	{"mouse_wheel_delta_x", &filter->_mouseWheelDeltaX, TE_VARIABLE, 0},
+	{"mouse_wheel_delta_y", &filter->_mouseWheelDeltaY, TE_VARIABLE, 0},
+	{"mouse_wheel_x", &filter->_mouseWheelX, TE_VARIABLE, 0},
+	{"mouse_wheel_y", &filter->_mouseWheelY, TE_VARIABLE, 0},
+	{"mouse_leave", &filter->_mouseLeave, TE_VARIABLE, 0},
 	{"radians", hlsl_rad, TE_FUNCTION1 | TE_FLAG_PURE, 0},
 	{"random", random_double, TE_FUNCTION2, 0},
-	{"mouse_pos_x", &filter->_screenMousePosX, 0, 0},
-	{"mouse_pos_y", &filter->_screenMousePosY, 0, 0},
-	{"screen_mouse_visible", &filter->_screenMouseVisible, 0, 0},
+	{"mouse_pos_x", &filter->_screenMousePosX, TE_VARIABLE, 0},
+	{"mouse_pos_y", &filter->_screenMousePosY, TE_VARIABLE, 0},
+	{"screen_mouse_visible", &filter->_screenMouseVisible, TE_VARIABLE, 0},
 	{"screen_height", static_cast<double(*)(double)>(getScreenHeight), TE_FUNCTION1, 0},
 	{"screen_width", static_cast<double(*)(double)>(getScreenWidth), TE_FUNCTION1, 0},
 	{"mouse_screen", &filter->_screenIndex},
-	{"mix", &filter->mixPercent, 0, 0},
+	{"mix", &filter->mixPercent, TE_VARIABLE, 0},
 	{"max", dmax, TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	{"min", dmin, TE_FUNCTION2 | TE_FLAG_PURE, 0},
 	/* Basic functions originally included in TinyExpr */
@@ -705,7 +703,6 @@ public:
 		std::string n = _parent->getName();
 		std::string d = _parent->getDescription();
 		std::string strNum = "";
-		EVal       *val = nullptr;
 
 		auto push_back = [=](std::vector<std::string>* list, std::string name, std::string fallback) {
 			EVal *v = _param->getAnnotationValue(name);
@@ -1323,12 +1320,12 @@ static void indexBuffer(std::vector<uint32_t>& vec, uint32_t particles)
 	size_t i = vec.size() / 6;
 	vec.reserve(vertexCount);
 	for (; vec.size() < vertexCount; i++) {
-		vec.push_back(0 + i * 4);
-		vec.push_back(1 + i * 4);
-		vec.push_back(2 + i * 4);
-		vec.push_back(1 + i * 4);
-		vec.push_back(2 + i * 4);
-		vec.push_back(3 + i * 4);
+		vec.push_back(0 + (uint32_t)i * 4);
+		vec.push_back(1 + (uint32_t)i * 4);
+		vec.push_back(2 + (uint32_t)i * 4);
+		vec.push_back(1 + (uint32_t)i * 4);
+		vec.push_back(2 + (uint32_t)i * 4);
+		vec.push_back(3 + (uint32_t)i * 4);
 	}
 }
 
@@ -1352,10 +1349,8 @@ static inline void renderSprite(ShaderSource *filter, gs_effect_t *effect, gs_te
 
 class TextureData : public ShaderData {
 private:
-	void renderSource(EParam *param, uint32_t cx, uint32_t cy)
+	void renderSource(uint32_t cx, uint32_t cy)
 	{
-		if (!param)
-			return;
 		uint32_t mediaWidth = obs_source_get_width(_mediaSource);
 		uint32_t mediaHeight = obs_source_get_height(_mediaSource);
 
@@ -1393,7 +1388,7 @@ private:
 		return (uint32_t)hSamples;
 	}
 
-	void renderAudioSource(EParam *param, uint64_t samples)
+	void renderAudioSource(uint64_t samples)
 	{
 		if (!_data)
 			_data = (uint8_t *)bzalloc(_maxAudioSize * _channels * sizeof(float));
@@ -1854,6 +1849,7 @@ public:
 	}
 	void inline generateParticle(float &elapsedTime, float &seconds)
 	{
+		UNUSED_PARAMETER(elapsedTime);
 		transformAlpha p = { 0 };
 		p.alpha = 255.0;
 		matrix4_identity(&p.position);
@@ -1911,8 +1907,6 @@ public:
 		UNUSED_PARAMETER(elapsedTime);
 		gs_texture_t *t;
 		obs_enter_graphics();
-		int srcWidth = obs_source_get_width(filter->context);
-		int srcHeight = obs_source_get_height(filter->context);
 		gs_texrender_reset(_texrender);
 		switch (_texType) {
 		case media:
@@ -2079,12 +2073,12 @@ public:
 		}
 
 		if (!_indexBuffer) {
-			indexBuffer(_indexBufferData, _particles.size());
+			indexBuffer(_indexBufferData, (uint32_t)_particles.size());
 			_indexBuffer = gs_indexbuffer_create(gs_index_type::GS_UNSIGNED_LONG, _indexBufferData.data(), _particles.size() * 6, GS_DYNAMIC | GS_DUP_BUFFER);
 		} else {
 			if (_particles.size() > oldSize) {
 				gs_indexbuffer_destroy(_indexBuffer);
-				indexBuffer(_indexBufferData, _particles.size());
+				indexBuffer(_indexBufferData, (uint32_t)_particles.size());
 				_indexBuffer = gs_indexbuffer_create(gs_index_type::GS_UNSIGNED_LONG, _indexBufferData.data(), _particles.size() * 6, GS_DYNAMIC | GS_DUP_BUFFER);
 			}
 		}
@@ -2097,17 +2091,15 @@ public:
 		uint32_t      srcWidth = obs_source_get_width(filter->context);
 		uint32_t      srcHeight = obs_source_get_height(filter->context);
 		gs_texture_t *t = nullptr;
-		size_t        pixels;
-		size_t        i, j;
-		uint8_t       u;
+		size_t        i;
 		switch (_texType) {
 		case media:
 		case source:
-			renderSource(_param, srcWidth, srcHeight);
+			renderSource(srcWidth, srcHeight);
 			t = gs_texrender_get_texture(_texrender);
 			break;
 		case audio:
-			renderAudioSource(_param, AUDIO_OUTPUT_FRAMES);
+			renderAudioSource(AUDIO_OUTPUT_FRAMES);
 			t = _tex;
 			break;
 		case image:
@@ -2140,7 +2132,7 @@ public:
 
 				if (_particles.size() > 0) {
 					if (t && _vertexBuffer && _indexBuffer) {
-						uint32_t vertexes = 6 * _particles.size();
+						uint32_t vertexes = 6 * (uint32_t)_particles.size();
 
 						gs_vertexbuffer_flush(_vertexBuffer);
 						gs_load_vertexbuffer(_vertexBuffer);
@@ -2471,9 +2463,7 @@ ShaderSource::ShaderSource(obs_data_t *settings, obs_source_t *source)
 	_source_type = obs_source_get_type(source);
 	_settings = settings;
 	_mutex = new PThreadMutex();
-#if __linux__ || __FreeBSD__
-	dpy = xdisp;
-#endif
+
 	prepReload();
 	update(this, _settings);
 };
@@ -2818,7 +2808,6 @@ void ShaderSource::videoRender(void *data, gs_effect_t *effect)
 		} else {
 			texture = gs_texrender_get_texture(filter->filterTexrender);
 			if (texture) {
-				gs_technique_t *tech = gs_effect_get_technique(filter->effect, techName);
 				if (filter->image)
 					gs_effect_set_texture(filter->image, texture);
 
@@ -2852,7 +2841,7 @@ void ShaderSource::videoRenderSource(void *data, gs_effect_t *effect)
 {
 	UNUSED_PARAMETER(effect);
 	ShaderSource *filter = static_cast<ShaderSource *>(data);
-	size_t        passes, i, j;
+	size_t        i;
 
 	obs_source_t *source;
 	gs_texture_t *texture;
@@ -2909,10 +2898,9 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 	float t, uint32_t cx, uint32_t cy)
 {
 	ShaderSource *filter = static_cast<ShaderSource *>(data);
-	size_t i, j, passes;
+	size_t i;
 	//uint32_t      parentFlags;
 	gs_texture_t *texture;
-	obs_source_t *source = filter->context;
 
 	uint64_t ts = os_gettime_ns();
 
@@ -3141,7 +3129,7 @@ static void getMouseCursor(void *data)
 	ShaderSource *filter = static_cast<ShaderSource *>(data);
 	QList<QScreen*> screens = QGuiApplication::screens();
 	QPoint cursor = QCursor::pos();
-	for (size_t i = 0; i < screens.size(); i++) {
+	for (int i = 0; i < screens.size(); i++) {
 		QScreen *screen = screens.at(i);
 		if (screen->geometry().contains(cursor)) {
 			QPoint p = QCursor::pos(screens.at(i));
@@ -3155,20 +3143,9 @@ static void getMouseCursor(void *data)
 	filter->_screenMouseVisible = false;
 }
 
-static double getMouseScreen()
-{
-	QPoint cursor = QCursor::pos();
-	QList<QScreen*> screens = QGuiApplication::screens();
-	for (size_t i = 0; i < screens.size(); i++) {
-		QScreen *screen = screens.at(i);
-		if (screen->geometry().contains(cursor))
-			return (double)i;
-	}
-	return 0.0;
-}
-
 static void getScreenSizes(void *data)
 {
+	UNUSED_PARAMETER(data);
 	if (screenMutex->trylock() == 0) {
 		QList<QScreen*> screens = QGuiApplication::screens();
 		size_t c = screenHeights.size();
@@ -3176,7 +3153,7 @@ static void getScreenSizes(void *data)
 			screenHeights.reserve(screens.count());
 			screenWidths.reserve(screens.count());
 		}
-		size_t i;
+		int i;
 		for (i = 0; i < c; i++) {
 			QSize size = screens.at(i)->size();
 			screenHeights[i] = size.height();
@@ -3282,6 +3259,7 @@ static bool shader_filter_file_name_changed(obs_properties_t *props, obs_propert
 
 static bool shader_filter_edit_effect_clicked(obs_properties_t *props, obs_property_t *p, void *data)
 {
+	UNUSED_PARAMETER(data);
 	obs_property_t *file_name = obs_properties_get(props, "shader_file_name");
 	obs_property_t *reload = obs_properties_get(props, "reload_effect");
 
