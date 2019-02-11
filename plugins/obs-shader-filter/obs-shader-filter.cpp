@@ -159,19 +159,52 @@ static double       output_channels;
 static std::string  dir[4] = { "left", "right", "top", "bottom" };
 static gs_effect_t *default_effect = nullptr;
 
+/* Includes basic functions originally included in TinyExpr */
+static const std::vector<te_variable> te_funcs = {
+	{"clamp", &hlsl_clamp, TE_FUNCTION3 | TE_FLAG_PURE, nullptr},
+	{"channels", &output_channels, TE_VARIABLE, nullptr},
+	{"degrees", &hlsl_degrees, TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"float_max", &flt_max, TE_VARIABLE, nullptr},
+	{"float_min", &flt_min, TE_VARIABLE, nullptr},
+	{"hz_from_mel", &audio_hz_from_mel, TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"int_max", &int_max, TE_VARIABLE, nullptr},
+	{"int_min", &int_min, TE_VARIABLE, nullptr},
+	{"max", &dmax, TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"min", &dmin, TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"abs", static_cast<double(*)(double)>(fabs),     TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"acos", static_cast<double(*)(double)>(acos),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"asin", static_cast<double(*)(double)>(asin),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"atan", static_cast<double(*)(double)>(atan),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"atan2", static_cast<double(*)(double, double)>(atan2),  TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"ceil", static_cast<double(*)(double)>(dceil),   TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"cos", static_cast<double(*)(double)>(cos),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"cosh", static_cast<double(*)(double)>(cosh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"e", &e, TE_VARIABLE, nullptr},
+	{"exp", static_cast<double(*)(double)>(exp),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"fac", static_cast<double(*)(double)>(fac),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"floor", static_cast<double(*)(double)>(dfloor), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"ln", static_cast<double(*)(double)>(log),       TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	#ifdef TE_NAT_LOG
+	{"log", static_cast<double(*)(double)>(log),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	#else
+	{"log", static_cast<double(*)(double)>(log10),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	#endif
+	{"log10", static_cast<double(*)(double)>(log10),  TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"ncr", static_cast<double(*)(double, double)>(ncr),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"npr", static_cast<double(*)(double, double)>(npr),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"pi", &pi, TE_VARIABLE, nullptr},
+	{"pow", static_cast<double(*)(double, double)>(pow),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+	{"sin", static_cast<double(*)(double)>(sin),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"sinh", static_cast<double(*)(double)>(sinh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"sqrt", static_cast<double(*)(double)>(sqrt),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"tan", static_cast<double(*)(double)>(tan),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"tanh", static_cast<double(*)(double)>(tanh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+};
+
 /* Additional likely to be used functions for mathmatical expressions */
 static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 {
-	/* Includes basic functions originally included in TinyExpr */
-	std::vector<te_variable> funcs = {
-		{"clamp", &hlsl_clamp, TE_FUNCTION3 | TE_FLAG_PURE, nullptr},
-		{"channels", &output_channels, TE_VARIABLE, nullptr},
-		{"degrees", &hlsl_degrees, TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"float_max", &flt_max, TE_VARIABLE, nullptr},
-		{"float_min", &flt_min, TE_VARIABLE, nullptr},
-		{"hz_from_mel", &audio_hz_from_mel, TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"int_max", &int_max, TE_VARIABLE, nullptr},
-		{"int_min", &int_min, TE_VARIABLE, nullptr},
+	std::vector<te_variable> filter_funcs = {
 		{"key", &filter->_key, TE_VARIABLE, nullptr},
 		{"key_pressed", &filter->_keyUp, TE_VARIABLE, nullptr},
 		{"sample_rate", &sample_rate, TE_VARIABLE, nullptr},
@@ -196,39 +229,11 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 		{"screen_width", static_cast<double(*)(double)>(getScreenWidth), TE_FUNCTION1, nullptr},
 		{"mouse_screen", &filter->_screenIndex},
 		{"mix", &filter->mixPercent, TE_VARIABLE, nullptr},
-		{"max", &dmax, TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"min", &dmin, TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"abs", static_cast<double(*)(double)>(fabs),     TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"acos", static_cast<double(*)(double)>(acos),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"asin", static_cast<double(*)(double)>(asin),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"atan", static_cast<double(*)(double)>(atan),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"atan2", static_cast<double(*)(double, double)>(atan2),  TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"ceil", static_cast<double(*)(double)>(dceil),   TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"cos", static_cast<double(*)(double)>(cos),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"cosh", static_cast<double(*)(double)>(cosh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"e", &e, TE_VARIABLE, nullptr},
-		{"exp", static_cast<double(*)(double)>(exp),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"fac", static_cast<double(*)(double)>(fac),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"floor", static_cast<double(*)(double)>(dfloor), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"ln", static_cast<double(*)(double)>(log),       TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-	    #ifdef TE_NAT_LOG
-		{"log", static_cast<double(*)(double)>(log),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-	    #else
-		{"log", static_cast<double(*)(double)>(log10),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-	    #endif
-		{"log10", static_cast<double(*)(double)>(log10),  TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"ncr", static_cast<double(*)(double, double)>(ncr),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"npr", static_cast<double(*)(double, double)>(npr),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"pi", &pi, TE_VARIABLE, nullptr},
-		{"pow", static_cast<double(*)(double, double)>(pow),      TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
-		{"sin", static_cast<double(*)(double)>(sin),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"sinh", static_cast<double(*)(double)>(sinh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"sqrt", static_cast<double(*)(double)>(sqrt),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"tan", static_cast<double(*)(double)>(tan),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"tanh", static_cast<double(*)(double)>(tanh),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr}
 	};
-	vars->reserve(vars->size() + funcs.size());
-	vars->insert(vars->end(), funcs.begin(), funcs.end());
+
+	vars->reserve(vars->size() + filter_funcs.size() + te_funcs.size());
+	vars->insert(vars->end(), filter_funcs.begin(), filter_funcs.end());
+	vars->insert(vars->end(), te_funcs.begin(), te_funcs.end());
 
 }
 
