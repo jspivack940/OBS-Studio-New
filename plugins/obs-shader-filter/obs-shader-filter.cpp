@@ -858,7 +858,6 @@ protected:
 	bool                _isFloat;
 	bool                _isInt;
 	bool                _isSlider;
-	bool                _skipWholeProperty;
 	bool                _skipCalculations;
 	bool                _showExpressionLess;
 	std::vector<bool>   _skipProperty;
@@ -923,7 +922,6 @@ public:
 		size_t i;
 		_isFloat = isFloatType(paramType);
 		_isInt = isIntType(paramType);
-		_skipWholeProperty = _bind ? true : false;
 		_skipCalculations = false;
 		_min.reserve(_dataCount);
 		_max.reserve(_dataCount);
@@ -1044,7 +1042,7 @@ public:
 	{
 		UNUSED_PARAMETER(filter);
 		size_t i;
-		if (_bind || _skipWholeProperty)
+		if (_bind)
 			return;
 		obs_property_t *p;
 		if (_isFloat) {
@@ -1125,7 +1123,7 @@ public:
 
 	void update(ShaderSource *filter)
 	{
-		if (_bind || _skipWholeProperty)
+		if (_bind)
 			return;
 		obs_data_t *settings = filter->getSettings();
 		size_t      i;
@@ -1423,11 +1421,13 @@ private:
 		obs_leave_graphics();
 	}
 
-	void updateAudioSource(std::string name)
+	void updateAudioSource()
 	{
 		obs_source_t *oldSideChain = _mediaSource;
-		if (!name.empty()) {
-			obs_source_t *sideChain = obs_get_source_by_name(name.c_str());
+		if (_targetName == _sourceName)
+			return;
+		if (!_targetName.empty()) {
+			obs_source_t *sideChain = obs_get_source_by_name(_targetName.c_str());
 			lock();
 			if (oldSideChain) {
 				obs_source_remove_active_child(_filter->context, oldSideChain);
@@ -1439,9 +1439,11 @@ private:
 			if (sideChain) {
 				obs_source_add_audio_capture_callback(sideChain, sidechain_capture, this);
 				obs_source_add_active_child(_filter->context, sideChain);
+				_sourceName = _targetName;
 			} else {
-				blog(LOG_WARNING, "Source '%s' does not exist", name.c_str());
+				_sourceName = "";
 			}
+
 			_mediaSource = sideChain;
 			unlock();
 		} else {
@@ -1453,6 +1455,7 @@ private:
 				for (size_t i = 0; i < MAX_AV_PLANES; i++)
 					_audio[i].clear();
 			}
+			_sourceName = "";
 			_mediaSource = nullptr;
 			unlock();
 		}
@@ -1476,6 +1479,7 @@ protected:
 	uint8_t           *_data = nullptr;
 	obs_source_t      *_mediaSource = nullptr;
 	std::string        _sourceName = "";
+	std::string        _targetName = "";
 	size_t             _size;
 	uint8_t            _range_0;
 	uint8_t            _range_1;
@@ -1825,7 +1829,8 @@ public:
 
 			break;
 		case audio:
-			updateAudioSource(obs_data_get_string(settings, _names[0].c_str()));
+			_targetName = obs_data_get_string(settings, _names[0].c_str());
+			updateAudioSource();
 			break;
 		case image:
 			if (!_image) {
@@ -1923,6 +1928,7 @@ public:
 		case source:
 			break;
 		case audio:
+			updateAudioSource();
 			break;
 		case image:
 			t = _image ? _image->texture : NULL;
