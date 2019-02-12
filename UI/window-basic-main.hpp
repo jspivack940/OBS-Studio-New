@@ -79,6 +79,11 @@ struct SavedProjectorInfo {
 	std::string name;
 };
 
+struct SavedCefWidgetInfo {
+	std::string url;
+	std::string geometry;
+};
+
 struct QuickTransition {
 	QPushButton *button = nullptr;
 	OBSSource source;
@@ -198,6 +203,8 @@ private:
 	std::vector<SavedProjectorInfo*> savedProjectorsArray;
 	QPointer<QWidget> projectors[10];
 	QList<QPointer<QWidget>> windowProjectors;
+	std::vector<SavedCefWidgetInfo*> savedCefWidgetsArray;
+	QList<QPointer<QWidget>> customCefWidgets;
 
 	QPointer<QWidget> stats;
 	QPointer<QWidget> remux;
@@ -407,7 +414,9 @@ private:
 	QByteArray startingDockLayout;
 
 	obs_data_array_t *SaveProjectors();
+	obs_data_array_t *SaveBrowserPanels();
 	void LoadSavedProjectors(obs_data_array_t *savedProjectors);
+	void LoadCefWidgets(obs_data_array_t *savedCefWidgets);
 
 	void ReceivedIntroJson(const QString &text);
 
@@ -725,6 +734,8 @@ private slots:
 	void on_actionShowProfileFolder_triggered();
 
 	void on_actionAlwaysOnTop_triggered();
+
+	void on_actionAddCefWidget_triggered();
 
 	void on_toggleListboxToolbars_toggled(bool visible);
 	void on_toggleStatusBar_toggled(bool visible);
