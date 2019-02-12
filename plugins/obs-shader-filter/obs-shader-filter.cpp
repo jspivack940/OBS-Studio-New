@@ -2474,6 +2474,10 @@ template<class DataType> DataType ShaderSource::evaluateExpression(DataType defa
 
 ShaderSource::ShaderSource(obs_data_t *settings, obs_source_t *source)
 {
+	paramList = {};
+	paramMap = {};
+	evaluationList = {};
+	expression = {};
 	elapsedTimeBinding.s64i = 0;
 	context = source;
 	_source_type = obs_source_get_type(source);
@@ -2570,10 +2574,13 @@ void ShaderSource::reload()
 	_effectPath = obs_data_get_string(_settings, "shader_file_name");
 	/* Load default effect text if no file is selected */
 	char *effect_string = nullptr;
-	if (!_effectPath.empty())
+	if (!_effectPath.empty()) {
+		if (!os_file_exists(_effectPath.c_str()))
+			return;
 		effect_string = os_quick_read_utf8_file(_effectPath.c_str());
-	else
+	} else {
 		return;
+	}
 
 	obs_enter_graphics();
 	effect = gs_effect_create(effect_string, NULL, &errors);
