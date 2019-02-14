@@ -305,7 +305,7 @@ public:
 	uint64_t startTimestamp;
 	uint64_t stopTimestamp;
 
-	float transitionSeconds;
+	float transitionSeconds = 0.0;
 
 	uint32_t totalWidth;
 	uint32_t totalHeight;
@@ -313,22 +313,23 @@ public:
 	gs_effect_t *effect = nullptr;
 	gs_texrender_t *filterTexrender = nullptr;
 
-	double _clickCount;
-	double _mouseUp;
-	double _mouseType;
-	double _screenMousePosX;
-	double _screenMousePosY;
-	double _screenIndex;
-	double _screenMouseVisible;
-	double _mouseX;
-	double _mouseY;
-	double _mouseClickX;
-	double _mouseClickY;
-	double _mouseLeave;
-	double _mouseWheelX;
-	double _mouseWheelY;
-	double _mouseWheelDeltaX;
-	double _mouseWheelDeltaY;
+	double _clickCount = 0.0;
+	double _mouseUp = 0.0;
+	double _mouseType = 0.0;
+	double _screenMousePosX = 0.0;
+	double _screenMousePosY = 0.0;
+	double _screenIndex = 0.0;
+	double _screenMouseVisible = 0.0;
+	double _mouseX = 0.0;
+	double _mouseY = 0.0;
+	double _mouseClickX = 0.0;
+	double _mouseClickY = 0.0;
+	double _mouseClickScreen = 0.0;
+	double _mouseLeave = 0.0;
+	double _mouseWheelX = 0.0;
+	double _mouseWheelY = 0.0;
+	double _mouseWheelDeltaX = 0.0;
+	double _mouseWheelDeltaY = 0.0;
 
 	std::vector<double> _screenWidth;
 	std::vector<double> _screenHeight;

@@ -17,107 +17,92 @@
 > ```
 > Note where sensible annotations are cast to their appropriate typing constraints, for example this integer parameter could've used a float for it's maximum value, at the point of gui creation this value will be cast to an integer. Meaning for the most part `int`, `float` and `bool` annotations are exchangeable.
 
-## Generic Annotations
-> `[any type]`
-> ### name
-> ```c
-> <string name;>
-> ```
-> This annotation determines the label text
-> ### module_text
-> ```c
-> <bool module_text;>
-> ```
-> This annotation determines if the label text should be searched from OBS's ini files.
+# Generic Annotations
+The string type annotation is used to specify and control different variations of gui elements
+```c
+string type = "Value";
+```
+Currently several values are supported, for `[int][float][bool]` and vectors of these types you can use:
+```
+string type = "combobox";
+string type = "list";
+string type = "num";
+string type = "slider';
+string type = "color";
+```
+If no value is specified or the annotation is not found the default "num" will be used for a a spinbox control.
 
-## Numerical Annotations
-> `[int, int2, int3, int4, float, float2, float3, float4]`
-> ### is_slider
-> ```c
-> <[bool] is_slider;>
-> ```
-> This boolean flag changes the gui from a numerical up/down combo box to a slider
-> ### is_list
-> ```c
-> <[bool] is_list;>
-> ```
-> This boolean flag changes the gui into a drop down list (see [list syntax](#lists))
-> ### min
-> ```c
->  <[int,float,bool] min;>
-> ```
-> This annotation specifies the lower bound of a slider or combo box gui.
-> ### max
-> ```c
-> <[int,float,bool] max;>
-> ```
-> This annotation specifies the upper bound of a slider or combo box gui.
-> ### step
-> ```c
-> <[int,float,bool] step;>
-> ```
-> This annotation specifies the value that the combo box or slider will increment by.
-> 
-> ### Lists
-> ```c
-> <[int|float|bool] list_item = ?; string list_item_?_name = "">
-> ```
-> When `is_list == true` the gui will be changed to a drop down list. The values for the list are set following the example above. Any number of values can be specified, the `string list_item_?_name` determines the text that'll be shown to the user for that value. By default the text will assume the numerical value as the text to use. The values are loaded in from left to right into the drop down in top down order.
+For `[texture2d]` textures you can use:
+```c
+string type = "source";
+string type = "audio";
+string type = "image";
+string type = "media';
+string type = "buffer";
+```
+If no value is specified or the annotation is not found the default "image" will be used for an image selector.
 
-## Float4 Only
-> `[float4]`
-> ### is_float4
-> ```c
-> <bool is_float4;>
-> ```
-> The `[float4]` type is considered by default a four component rgba color ranging from 0-255 (tranformed into 0-1 range for the shader). `is_float4` set to true will treat float4 like all the other vectors.
+# Numerical Annotations
+There are three main variations of numerical controls: a spinbox, a drop-down list (or combobox),
+and a slider (also includes a spinbox).
+## sliders & spinboxes
+For these several parameters are used to specify how the gui functions:
+```c
+DataType min = Value;
+DataType max = Value;
+DataType step = Value;
+DataType default = Value;
+```
+For vector types each of these values may be specified per component by appending `'_'` and their index, eg:
+```c
+DataType min_0 = Value;
+DataType max_1 = Value;
+DataType step_2 = Value;
+DataType default_3 = Value;
+```
+By default the minimum and maximum values are the upper and lower ilmits of those types
+>warning: for sliders these values are too ridiculously far apart for the slider to function, specify a reasonable limit for your control.
 
-## Texture Annotations
-> `[texture2d]`
-> ### is_source
-> ```c
-> <bool is_source;>
-> ```
-> This annotation will create a drop down list of active graphic sources that can be used as textures.
-> ### is_audio_source
-> ```c
-> <bool is_audio_source;>
-> ```
-> This annotation will create a drop down list of active audio sources that can be used as textures.
-> ### is_fft
-> ```c
-> <bool is_fft;>
-> ```
-> This annotation (in combination w/ an audio source) if set to true will perform an FFT on the audio data being recieved.
+The default value for all types is 0.
 
-## Boolean Annotations
-> `[bool]`
-> ### is_list
-> ```c
-> <bool is_list;>
-> ```
-> This annotation if set to true changes the gui into a drop down list as opposed to a checkbox.
-> 
-> ### enabled_string
-> ```c
-> <string enabled_string;>
-> ```
-> This annotation specifies the text for the drop down list for its "true" value.
-> ### enabled_module_text
-> ```c
-> <bool enabled_module_text;>
-> ```
-> This annotation determines whether the text should be searched from OBS's ini files.
-> ### disabled_string
-> ```c
-> <string disabled_string;>
-> ```
-> This annotation specifies the text for the drop down list for it's "false" value.
-> ### disabled_module_text
-> ```c
-> <bool disabled_module_text;>
-> ```
-> This annotation determines whether the text should be searched from OBS's ini files.
+## lists
+Drop down lists are made by creating any number of annotation pairs following this syntax:
+```c
+Datatype list_item_? = Value
+Datatype list_item_?_name = Value
+```
+Where the list_item determines the value of the that particular drop down item and _name determines the forward facing text.
+If no name is found the value of the parameter is used by default as the text.
+
+The default annotation is used to specify the default option selected (by value), if no default is specified the first of the list
+is selected by default.
+
+# Texture Annotations
+There are many textures in use by OBS at any given time, this plugin gives access to a few different types for your plugin to work with.
+see [#Generic Annotations](/#generic-annotations). Here are a few special variations.
+
+The audio type creates a texture representing the waveform of the audio source selected along the x axis and per channel along the y axis.
+If the is_fft annotation is set to true, a fast fourier tranform (FFT) is performed on the data. This can be furthur trasformed to give the power spectra (the strength of the frequencies measured in dB).
+If performing a FFT a window function may be specified via the string window annotation, currently supported are:
+```c
+string window = "bartlett";
+string window = "blackmann";
+string window = "blackmann_exact";
+string window = "blackmann_harris";
+string window = "blackmann_nuttall";
+string window = "flat_top";
+string window = "hann";
+string window = "nuttall";
+string window = "sine";
+string window = "triangular";
+string window = "welch";
+```
+> See https://en.wikipedia.org/wiki/Window_function
+
+by default no (or rectangular) window is specified.
+
+The buffer type copies a texture from a particular pass which is specified by the string technique annotation and int pass annotation.
+The default pass of -1 indicates to copy the texture from the last of a given technique.
 
 ## Example Shader
 This dead simple shader lets you mirror another source...in any source.
@@ -170,51 +155,114 @@ technique Draw
 ```
 
 ## Advanced
-> The ability to extract annotations also gives very intresting prospects. Here to give full flexibility of 
-> the creative juices I've taken a handy library [tinyexpr](https://github.com/codeplea/tinyexpr) to give you the ability
-> to write mathmatical expressions in order to evaluate parameters.
->
-> Yes...that's right, if you can express the value that you want in a mathmatical formula. You can.
-> Note: these values are not added to the gui, as they don't need to be shown.
+The ability to extract annotations also gives very intresting prospects. Here to give full flexibility of 
+the creative juices I've taken a handy library [tinyexpr](https://github.com/codeplea/tinyexpr) to give you the ability
+to write mathmatical expressions in order to evaluate parameters.
+
+Yes...that's right, if you can express the value that you want in a mathmatical formula. You can.
+Note: these values are not added to the gui, as they don't need to be shown.
 
 ## tinyexpr (& crop / expansion)
-> `[bool, int, float]`
-> ### expr
-> ```c
-> <string expr;>
-> ```
-> This annotation describes a mathmatical function to evaluate
+Similar in syntax to min, max, step and default for numerical types expressions can be specfied per component of a vector.
+```c
+string expr = "math * expression / here";
+```
+If specified an expression will hide that particular parameter / component from the gui, and will be evaulated one per frame.
+These mathmatical expressions may use existing values which are snake-cased, along with several mathmatical functions.
 
-> `[int2, int3, int4, float2, float3, float4]`
-> ### expr_x, expr_y, expr_z, expr_w
-> ```c
-> <string expr_x; string expr_y; string expr_z; string expr_z;>
-> ```
-> These annotations describe a mathmatical expression to evalulate for computing each vector component.
+```c
+uniform int someInt; //camel cased
+uniform int somesecondint; //not camel cased
+uniform int someOtherInt<string expr = "some_int * somesecondint * 5";>;
+```
+In addition several common mathmatical functions are available for use:
+```c
+abs(input)
+acos(input)
+asin(input)
+atan(input)
+atan2(y, x)
+ceil(input)
+clamp(input, min, max)
+cos(radians)
+cosh(input)
+degrees(radians)
+exp(input)
+fac(input)
+floor(input)
+hz_from_mel(mel)
+ln(input)
+log10(input)
+mel_from_hz(hz)
+ncr(objects, sample)
+npr(objects, sample)
+pow(base, power)
+radians(degrees)
+random(min, max)
+screen_height(screen_index)
+screen_width(screen_index)
+sin(radians)
+sqrt(input)
+tan(radians)
+tanh(input)
+```
+And some additional constants:
+```c
+channels //OBS's output channel count
+e //The best growth constant
+float_max //The maximum value a float can store
+float_min //The minimum value a float can store
+int_max //The minimum value an int can store
+int_min //The maximum value an int can store
+key //Returns the value of the last key pressed
+key_pressed //Returns "true" if the key was pressed
+mix //The % progress of the transition (for audio mixing)
+mouse_button //The last mouse button pressed
+mouse_click_x //The x position of the last mouse click relative to the current screen
+mouse_click_y //The y position of the last mouse click relative to the current screen
+mouse_click_screen //The index of the last screen the mouse was clicked
+mouse_event_pos_x //The x position of the mouse relative to the interact screen
+mouse_event_pos_y //The y position of the mouse relative to the interact screen
+mouse_leave //Returns "true" 1.0 if the mouse is in the interact screen area
+mouse_pos_x //The x position of the mouse relative to the current screen
+mouse_pos_y //The y position of the mouse relative to the current screen
+mouse_screen //The index of which screen the mouse is currently on (use in combination w/ screen_height / width)
+mouse_up //Returns "true" if mouse button was pressed
+mouse_visible //Returns "true" 1.0 if the mouse is visible on any screen
+mouse_wheel_delta_x
+mouse_wheel_delta_y
+mouse_wheel_x
+mouse_wheel_y
+pi
+sample_rate //OBS's output sample rate
+```
 
-> `[any of the above]`
-> ### update_expr_per_frame
-> ```c
-> <bool update_expr_per_frame;>
-> ```
-> This annotation controls whether the expression is evaluated per frame
-> ### Cropping / Expansion
-> Note: Each direction is handled by one expression, the first expressions found will be considered the ones to evaulate, and are always evaulated per frame.
-> These annotations specify mathmatical expressions to evaluate cropping / expansion of the frame in their respective directions by pixel amounts.
-> Positive values = expansion, Negative = cropping.
-> In addition they must be confirmed as bound `bool bind_left` `bool bind_right` `bool bind_top` `bool bind_bottom`
+### Cropping / Expansion
+These annotations specify mathmatical expressions to evaluate cropping / expansion of the frame in their respective directions by pixel amounts.
+Positive values = expansion, Negative = cropping.
 
-> `[bool, int, float, texture2d]`
-> ### bind_left_expr, bind_right_expr, bind_top_expr, bind_bottom_expr
-> ```c
-> <string bind_left_expr; string bind_right_expr; string bind_top_expr; string bind_bottom_expr;>
-> ```
-> `[int2, int3, int4, float2, float3, float4]`
+### resize_expr_left, resize_expr_right, resize_expr_top, resize_expr_bottom
+```c
+<string resize_expr_left; string resize_expr_right; string resize_expr_top; string resize_expr_bottom;>
+```
 
-> For brevity's sake, these are like the above, but w/ their respective vector component like so:
-> ```c
-> <string bind_[direction]_[vector component]_expr;>
-> ```
+## Bound variables
+Some variables are predefined for ease of use in designing your shader:
+```c
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d image_0; //alternative to image
+uniform texture2d image_1; //for transitions
+
+uniform float elapsed_time; //the time since the start of the effect
+uniform float2 uv_offset; //the offset of a source from the corner of the screen
+uniform float2 uv_scale; //converts pixels into unit vector
+uniform float2 uv_pixel_interval //the inverse of uv_scale, use to convert unit vector back into pixels;
+
+uniform float transition_percentage; //for transitions
+uniform float transition_time; //for transitions
+```
+
 
 ## Advanced Shader
 ```c
@@ -272,7 +320,7 @@ float hertzFromMel(float mel) {
 	return 700 * (pow(10, mel / 2595) - 1);
 }
 
-uniform texture2d audio <bool is_audio_source = true; bool is_fft = true; int fft_samples = 1024; string window = "blackmann_harris";>;
+uniform texture2d audio <string type = "audio"; bool is_fft = true; int fft_samples = 1024; string window = "blackmann_harris";>;
 uniform bool vertical;
 uniform float px_shift <bool is_slider = true; float min = 0.5; float max = 1920; float step = 0.5;>;
 uniform bool show_fft;

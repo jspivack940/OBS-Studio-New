@@ -156,7 +156,7 @@ static const double int_max = INT_MAX;
 static double       sample_rate;
 static double       frame_rate;
 static double       output_channels;
-static std::string  dir[4] = { "left", "right", "top", "bottom" };
+static const std::string  dir[4] = { "left", "right", "top", "bottom" };
 static gs_effect_t *default_effect = nullptr;
 
 #define WRAPVOID(x) reinterpret_cast<void*>(x)
@@ -169,8 +169,14 @@ static const std::vector<te_variable> te_funcs({
 	{"float_max", &flt_max, TE_VARIABLE, nullptr},
 	{"float_min", &flt_min, TE_VARIABLE, nullptr},
 	{"hz_from_mel", WRAPVOID(&audio_hz_from_mel), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"mel_from_hz", WRAPVOID(&audio_mel_from_hz), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"int_max", &int_max, TE_VARIABLE, nullptr},
 	{"int_min", &int_min, TE_VARIABLE, nullptr},
+	{"radians", WRAPVOID(&hlsl_rad), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+	{"random", WRAPVOID(&random_double), TE_FUNCTION2, nullptr},
+	{"screen_height", WRAPVOID(static_cast<double(*)(double)>(&getScreenHeight)), TE_FUNCTION1, nullptr},
+	{"screen_width", WRAPVOID(static_cast<double(*)(double)>(&getScreenWidth)), TE_FUNCTION1, nullptr},
+
 	{"max", WRAPVOID(&dmax), TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
 	{"min", WRAPVOID(&dmin), TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
 	{"abs", WRAPVOID(static_cast<double(*)(double)>(&fabs)),     TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
@@ -210,25 +216,21 @@ static void prepFunctions(std::vector<te_variable> *vars, ShaderSource *filter)
 		{"key", &filter->_key, TE_VARIABLE, nullptr},
 		{"key_pressed", &filter->_keyUp, TE_VARIABLE, nullptr},
 		{"sample_rate", &sample_rate, TE_VARIABLE, nullptr},
-		{"mel_from_hz", WRAPVOID(&audio_mel_from_hz), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 		{"mouse_click_x", &filter->_mouseClickX, TE_VARIABLE, nullptr},
 		{"mouse_click_y", &filter->_mouseClickY, TE_VARIABLE, nullptr},
+		{"mouse_click_screen", &filter->_mouseClickScreen, TE_VARIABLE, nullptr},
 		{"mouse_event_pos_x", &filter->_mouseX, TE_VARIABLE, nullptr},
 		{"mouse_event_pos_y", &filter->_mouseY, TE_VARIABLE, nullptr},
-		{"mouse_type", &filter->_mouseType, TE_VARIABLE, nullptr},
+		{"mouse_button", &filter->_mouseType, TE_VARIABLE, nullptr},
 		{"mouse_up", &filter->_mouseUp, TE_VARIABLE, nullptr},
 		{"mouse_wheel_delta_x", &filter->_mouseWheelDeltaX, TE_VARIABLE, nullptr},
 		{"mouse_wheel_delta_y", &filter->_mouseWheelDeltaY, TE_VARIABLE, nullptr},
 		{"mouse_wheel_x", &filter->_mouseWheelX, TE_VARIABLE, nullptr},
 		{"mouse_wheel_y", &filter->_mouseWheelY, TE_VARIABLE, nullptr},
 		{"mouse_leave", &filter->_mouseLeave, TE_VARIABLE, nullptr},
-		{"radians", WRAPVOID(&hlsl_rad), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-		{"random", WRAPVOID(&random_double), TE_FUNCTION2, nullptr},
 		{"mouse_pos_x", &filter->_screenMousePosX, TE_VARIABLE, nullptr},
 		{"mouse_pos_y", &filter->_screenMousePosY, TE_VARIABLE, nullptr},
-		{"screen_mouse_visible", &filter->_screenMouseVisible, TE_VARIABLE, nullptr},
-		{"screen_height", WRAPVOID(static_cast<double(*)(double)>(&getScreenHeight)), TE_FUNCTION1, nullptr},
-		{"screen_width", WRAPVOID(static_cast<double(*)(double)>(&getScreenWidth)), TE_FUNCTION1, nullptr},
+		{"mouse_visible", &filter->_screenMouseVisible, TE_VARIABLE, nullptr},
 		{"mouse_screen", &filter->_screenIndex, TE_VARIABLE, nullptr},
 		{"mix", &filter->mixPercent, TE_VARIABLE, nullptr},
 	});
@@ -971,17 +973,13 @@ public:
 		}
 
 		EVal *guitype = _param->getAnnotationValue("type");
-		bool  isSlider = _param->getAnnotationValue<bool>("is_slider", true);
 
 		std::unordered_map<std::string, uint32_t> types = { {"combobox", combobox}, {"list", list}, {"num", num},
 				{"slider", slider}, {"color", color} };
 
 		_numType = num;
-		if (guitype && types.find(guitype->getString()) != types.end()) {
+		if (guitype && types.find(guitype->getString()) != types.end())
 			_numType = (NumericalType)types.at(guitype->getString());
-		} else if (isSlider) {
-			_numType = slider;
-		}
 
 		obs_data_t *settings = _filter->getSettings();
 		if (_isFloat) {
@@ -3201,6 +3199,15 @@ void ShaderSource::mouseClick(void *data, const struct obs_mouse_event *event,
 	filter->_mouseY = event->y;
 	filter->_mouseClickX = event->x;
 	filter->_mouseClickY = event->y;
+
+	QList<QScreen*> screens = QGuiApplication::screens();
+	QPoint cursor = QCursor::pos();
+	for (int i = 0; i < screens.size(); i++) {
+		QScreen *screen = screens.at(i);
+		if (screen->geometry().contains(cursor)) {
+			filter->_mouseClickScreen = (double)i;
+		}
+	}
 }
 
 void ShaderSource::mouseMove(void *data, const struct obs_mouse_event *event, bool mouse_leave)
