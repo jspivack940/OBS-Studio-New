@@ -342,8 +342,7 @@ public:
 
 	~EVal()
 	{
-		if (data)
-			bfree(data);
+		bfree(data);
 	};
 
 	operator std::vector<float>()
@@ -1562,12 +1561,12 @@ public:
 
 		_texrender = nullptr;
 		_tex = nullptr;
-		if (_image)
-			bfree(_image);
+		_vertexBufferData = nullptr;
+		bfree(_image);
 		_image = nullptr;
 
-		if (_data)
-			bfree(_data);
+		bfree(_data);
+		_data = nullptr;
 		if (_mutex)
 			delete _mutex;
 		if (_audioMutex)
