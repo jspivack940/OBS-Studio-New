@@ -993,17 +993,18 @@ public:
 			}
 		} else if (_isInt) {
 			for (i = 0; i < _dataCount; i++) {
-				obs_data_set_default_int(settings, _names[i].c_str(), (int)_default[i]);
+				obs_data_set_default_int(settings, _names[i].c_str(), (long long)_default[i]);
 			}
 		} else {
 			for (i = 0; i < _dataCount; i++) {
 				switch (_numType) {
 				case combobox:
 				case list:
-					obs_data_set_default_int(settings, _names[i].c_str(), (int)_default[i]);
+					obs_data_set_default_int(settings, _names[i].c_str(), (long long)_default[i]);
 					break;
 				default:
-					obs_data_set_bool(settings, _names[i].c_str(), (bool)_default[i]);
+					obs_data_set_default_bool(settings, _names[i].c_str(), (bool)_default[i]);
+					break;
 				}
 			}
 		}
@@ -1111,6 +1112,7 @@ public:
 					break;
 				default:
 					p = obs_properties_add_bool(props, _names[i].c_str(), _descs[i].c_str());
+					break;
 				}
 				obs_property_set_enabled(p, !_disableProperty[i]);
 				obs_property_set_long_description(p, _tooltips[i].c_str());
@@ -1124,6 +1126,7 @@ public:
 			return;
 		obs_data_t *settings = filter->getSettings();
 		size_t      i;
+
 		for (i = 0; i < _dataCount; i++) {
 			switch (_paramType) {
 			case GS_SHADER_PARAM_BOOL:
@@ -1251,9 +1254,10 @@ public:
 	void videoRender(ShaderSource *filter)
 	{
 		UNUSED_PARAMETER(filter);
+		/*
 		if (_skipCalculations)
 			return;
-
+		*/
 		setData();
 	}
 };
@@ -3050,6 +3054,7 @@ void ShaderSource::update(void *data, obs_data_t *settings)
 		obs_source_update_properties(filter->context);
 	}
 	size_t i;
+	filter->_settings = settings;
 	for (i = 0; i < filter->paramList.size(); i++) {
 		if (filter->paramList[i])
 			filter->paramList[i]->update(filter);
