@@ -1855,14 +1855,7 @@ public:
 			break;
 		}
 	}
-	template <class T>
-	void calculateExpression(T& val, std::string& expr, T fallback = 0)
-	{
-		if (!expr.empty()) {
-			_filter->compileExpression(expr);
-			val = _filter->evaluateExpression<T>(fallback);
-		}
-	}
+
 	void inline generateParticle(float &elapsedTime, float &seconds)
 	{
 		UNUSED_PARAMETER(elapsedTime);
@@ -2922,7 +2915,6 @@ static void renderTransition(void *data, gs_texture_t *a, gs_texture_t *b,
 {
 	ShaderSource *filter = static_cast<ShaderSource *>(data);
 	size_t i;
-	//uint32_t      parentFlags;
 	gs_texture_t *texture;
 
 	uint64_t ts = os_gettime_ns();
