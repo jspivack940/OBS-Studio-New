@@ -739,14 +739,17 @@ static inline bool HasAudioDevices(const char *source_id)
 void OBSBasic::CreateFirstRunSources()
 {
 	bool hasDesktopAudio = HasAudioDevices(App()->OutputAudioSource());
-	bool hasInputAudio = HasAudioDevices(App()->InputAudioSource());
 
 	if (hasDesktopAudio)
 		ResetAudioDevice(App()->OutputAudioSource(), "default",
-				 Str("Basic.DesktopDevice1"), 1);
-	if (hasInputAudio)
+				Str("Basic.DesktopDevice1"), 1);
+	if (HasAudioDevices(App()->InputAudioSource()))
 		ResetAudioDevice(App()->InputAudioSource(), "default",
-				 Str("Basic.AuxDevice1"), 3);
+				Str("Basic.AuxDevice1"), 3);
+	if (HasAudioDevices("asio_input_capture"))
+		ResetAudioDevice("asio_input_capture", "default",
+			Str("Basic.AuxDevice1"), 3);
+
 }
 
 void OBSBasic::CreateDefaultScene(bool firstStart)
