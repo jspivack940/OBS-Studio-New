@@ -1,4 +1,4 @@
-# Shader Filter <[shader-filter-eval](https://github.com/Andersama/obs-studio/tree/shader-filter-eval)>
+# Shader Plugins <[shader-plugins](https://github.com/Andersama/obs-studio/tree/shader-filter-cpp)>
 >Rapidly prototype and create graphical effects using OBS's shader syntax.
 
 ## Usage
