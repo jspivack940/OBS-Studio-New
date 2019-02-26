@@ -5,7 +5,7 @@
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs_shader_filter", "en-US")
-#define blog(level, msg, ...) blog(level, "shader-filter: " msg, ##__VA_ARGS__)
+#define blog(level, msg, ...) blog(level, "shader-plugin: " msg, ##__VA_ARGS__)
 
 static const float farZ = 2097152.0f; // 2 pow 21
 static const float nearZ = 1.0f / farZ;
@@ -3389,8 +3389,10 @@ bool obs_module_load(void)
 	sample_rate = (double)aoi.samples_per_sec;
 	output_channels = (double)get_audio_channels(aoi.speakers);
 
-	if (!loadModuleEffect(&default_effect, "default.effect"))
+	if (!loadModuleEffect(&default_effect, "default.effect")) {
+		blog(LOG_ERROR, "Failed to load default effect");
 		return false;
+	}
 
 	return true;
 }
