@@ -1475,7 +1475,7 @@ protected:
 	gs_texture_t      *_tex = nullptr;
 	gs_image_file_t   *_image = nullptr;
 	std::vector<float> _audio[MAX_AV_PLANES];
-	std::vector<float> _tempAudio[MAX_AV_PLANES];
+	//std::vector<float> _tempAudio[MAX_AV_PLANES];
 	bool               _isFFT = false;
 	bool               _isParticle = false;
 	bool               _bufferCopied = false;

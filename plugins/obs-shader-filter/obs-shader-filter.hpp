@@ -31,7 +31,7 @@ extern "C" {
 #include "fft.h"
 #include "tinyexpr.h"
 #include "mtrandom.h"
-#include "muparser/include/muParser.h"
+#include "muParser.h"
 
 #undef _ENABLE_EXTENDED_ALIGNED_STORAGE
 
