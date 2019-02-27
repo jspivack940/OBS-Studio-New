@@ -58,11 +58,6 @@ enum {
 };
 
 
-enum {
-	TE_CONSTANT = 1
-};
-
-
 typedef struct state {
 	const char *start;
 	const char *next;

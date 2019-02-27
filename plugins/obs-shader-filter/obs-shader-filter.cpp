@@ -187,7 +187,7 @@ static const std::vector<te_variable> te_funcs({
 	{"ceil", WRAPVOID(static_cast<double(*)(double)>(&dceil)),   TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"cos", WRAPVOID(static_cast<double(*)(double)>(&cos)),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"cosh", WRAPVOID(static_cast<double(*)(double)>(&cosh)),    TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
-	{"e", &e, TE_VARIABLE, nullptr},
+//	{"e", &e, TE_VARIABLE, nullptr},
 	{"exp", WRAPVOID(static_cast<double(*)(double)>(&exp)),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"fac", WRAPVOID(static_cast<double(*)(double)>(&fac)),      TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
 	{"floor", WRAPVOID(static_cast<double(*)(double)>(&dfloor)), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
@@ -2442,6 +2442,7 @@ void ShaderSource::appendVariable(std::string &name, double *binding)
 void ShaderSource::compileExpression(std::string expr)
 {
 	expression.compile(expr);
+	/*
 	if (!expressionCompiled()) {
 		blog(LOG_WARNING, "%s failed to compile %s",
 				getType() == OBS_SOURCE_TYPE_FILTER ?
@@ -2449,6 +2450,7 @@ void ShaderSource::compileExpression(std::string expr)
 				obs_source_get_name(context),
 				expr.c_str());
 	}
+	*/
 }
 
 bool ShaderSource::expressionCompiled()
@@ -2530,7 +2532,7 @@ void ShaderSource::updateCache(gs_eparam_t *param)
 		return;
 	paramList.push_back(p);
 	paramMap.insert(std::pair<std::string, ShaderParameter *>(p->getName(), p));
-	blog(LOG_INFO, "%s", p->getName().c_str());
+	blog(LOG_DEBUG, "%s", p->getName().c_str());
 }
 
 void ShaderSource::reload()
@@ -2747,12 +2749,12 @@ void ShaderSource::videoRender(void *data, gs_effect_t *effect)
 		parent = obs_filter_get_parent(filter->context);
 
 		if (!target) {
-			blog(LOG_INFO, "filter '%s' being processed with no target!",
+			blog(LOG_ERROR, "filter '%s' being processed with no target!",
 				obs_source_get_name(filter->context));
 			return;
 		}
 		if (!parent) {
-			blog(LOG_INFO, "filter '%s' being processed with no parent!",
+			blog(LOG_ERROR, "filter '%s' being processed with no parent!",
 				obs_source_get_name(filter->context));
 			return;
 		}
@@ -2866,7 +2868,7 @@ void ShaderSource::videoRenderSource(void *data, gs_effect_t *effect)
 	source = filter->context;
 
 	if (!source) {
-		blog(LOG_INFO, "no source?");
+		blog(LOG_ERROR, "no source to render");
 		return;
 	}
 
@@ -3045,6 +3047,7 @@ void ShaderSource::update(void *data, obs_data_t *settings)
 		filter->reload();
 		obs_source_update_properties(filter->context);
 	}
+
 	size_t i;
 	filter->_settings = settings;
 	for (i = 0; i < filter->paramList.size(); i++) {

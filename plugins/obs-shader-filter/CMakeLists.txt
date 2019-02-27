@@ -25,6 +25,37 @@ if(MSVC)
 		w32-pthreads)
 endif()
 
+#add_subdirectory(muparser)
+
+set(muparser_HEADERS
+	muParserBase.h
+	muParserBytecode.h
+	muParserCallback.h
+	muParserDef.h
+	muParserDLL.h
+	muParserError.h
+	muParserFixes.h
+	muParser.h
+	muParserInt.h
+	muParserStack.h
+	muParserTemplateMagic.h
+	#muParserTest.h
+	muParserToken.h
+	muParserTokenReader.h
+)
+
+set(muparser_SOURCES
+	muParserBase.cpp
+	muParserBytecode.cpp
+	muParserCallback.cpp
+	muParser.cpp
+	muParserDLL.cpp
+	muParserError.cpp
+	muParserInt.cpp
+	#muParserTest.cpp
+	muParserTokenReader.cpp
+)
+
 set(obs-shader-filter_HEADERS
 	fft.h
 	tinyexpr.h
@@ -40,6 +71,8 @@ set(obs-shader-filter_SOURCES
 )
 
 add_library(obs-shader-filter MODULE
+	${muparser_HEADERS}
+	${muparser_SOURCES}
 	${obs-shader-filter_SOURCES}
 	${obs-shader-filter_HEADERS}
 )

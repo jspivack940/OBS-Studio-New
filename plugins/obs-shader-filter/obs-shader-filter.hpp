@@ -31,6 +31,7 @@ extern "C" {
 #include "fft.h"
 #include "tinyexpr.h"
 #include "mtrandom.h"
+#include "muparser/include/muParser.h"
 
 #undef _ENABLE_EXTENDED_ALIGNED_STORAGE
 
@@ -111,11 +112,11 @@ struct bind2 {
 
 class TinyExpr : public std::vector<te_variable> {
 	std::string _expr;
-	te_expr    *_compiled = nullptr;
+	mu::Parser *_compiledMu = nullptr;
 	int         _err = 0;
 	std::string _errString = "";
 
-	std::unordered_map<std::string, te_expr*> _compiledMap;
+	std::unordered_map<std::string, mu::Parser*> _compiledMuMap;
 	std::unordered_map<std::string, int> _errMap;
 	std::unordered_map<std::string, std::string> _errStrMap;
 public:
@@ -128,11 +129,11 @@ public:
 	}
 	void releaseExpression()
 	{
-		for (auto it : _compiledMap) {
-			te_free(it.second);
+		for (auto it : _compiledMuMap) {
+			delete it.second;
 			it.second = nullptr;
 		}
-		_compiledMap.clear();
+		_compiledMuMap.clear();
 		_errMap.clear();
 		_errStrMap.clear();
 	}
@@ -149,46 +150,175 @@ public:
 	}
 	template<class DataType> DataType evaluate(DataType default_value = 0)
 	{
-		DataType ret = default_value;
-		if (_compiled)
-			ret = (DataType)te_eval(_compiled);
-		return ret;
+		try {
+			return (DataType)_compiledMu->Eval();
+		} catch (mu::Parser::exception_type &e) {
+			return default_value;
+		}
 	}
 	template<class DataType> DataType evaluate(std::string expression, DataType default_value = 0)
 	{
-		DataType ret = default_value;
-		if (_compiledMap.count(expression))
-			ret = (DataType)te_eval(_compiledMap.at(expression));
-		return ret;
+		try {
+			if (_compiledMuMap.count(expression))
+				return (DataType)_compiledMu->Eval();
+			return default_value;
+		} catch (mu::Parser::exception_type &e) {
+			return default_value;
+		}
 	}
 	void compile(std::string expression)
 	{
 		if (expression.empty())
 			return;
-		if (_compiledMap.count(expression)) {
-			_compiled = _compiledMap.at(expression);
+
+		if (_compiledMuMap.count(expression)) {
 			_errString = _errStrMap.at(expression);
 			_err = _errMap.at(expression);
+			_compiledMu = _compiledMuMap.at(expression);
 			return;
 		}
 
-		_compiled = te_compile(expression.c_str(), data(), (int)size(), &_err);
-		if (!_compiled) {
-			_errString = "Expression Error At [" + std::to_string(_err) + "] in: " + expression + "\n" +
-				expression.substr(0, _err) + "[ERROR HERE]" + expression.substr(_err);
-			blog(LOG_WARNING, _errString.c_str());
-		} else {
+		blog(LOG_DEBUG, "First Compilation: %s", expression.c_str());
+		_compiledMu = new mu::Parser();
+		std::string name;
+
+		for (size_t i = 0; i < size(); i++) {
+			te_variable *a = &data()[i];
+			int type = a->type & (~TE_FLAG_PURE);
+			bool pure = a->type & (TE_FLAG_PURE);
+#ifdef UNICODE
+			name = a->name;
+			mu::string_type n;
+			n.reserve(name.size());
+			os_utf8_to_wcs(name.c_str(), name.size(), &n[0], name.size());
+			n = n.c_str();
+#else
+			name = a->name;
+			mu::string_type n = name;
+#endif
+			try {
+				switch (type) {
+				case TE_CONSTANT:
+					_compiledMu->DefineConst(n,
+						(*(mu::value_type*)(&a->address)));
+					break;
+				case TE_VARIABLE:
+					_compiledMu->DefineVar(n, (mu::value_type*)a->address);
+					break;
+				case TE_FUNCTION0:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)()>(a->address), pure);
+					break;
+				case TE_FUNCTION1:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double)>(a->address), pure);
+					break;
+				case TE_FUNCTION2:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double)>(a->address), pure);
+					break;
+				case TE_FUNCTION3:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double, double)>(a->address), pure);
+					break;
+				case TE_FUNCTION4:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double, double, double)>(a->address), pure);
+					break;
+				case TE_FUNCTION5:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double, double, double, double)>(a->address), pure);
+					break;
+				case TE_FUNCTION6:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double, double, double, double, double)>(a->address), pure);
+					break;
+				case TE_FUNCTION7:
+					_compiledMu->DefineFun(n, reinterpret_cast<double(*)(double, double, double, double, double, double, double)>(a->address), pure);
+					break;
+				}
+			} catch (mu::Parser::exception_type &e) {
+#ifdef UNICODE
+				mu::string_type n = e.GetMsg();
+				std::string cn;
+				cn.reserve(n.size());
+				os_wcs_to_utf8(n.c_str(), n.size(), &cn[0], n.size());
+				cn = cn.c_str();
+#else
+				std::string cn = e.GetMsg();
+#endif
+				blog(LOG_WARNING, "%s", cn.c_str());
+				blog(LOG_WARNING, "error adding: %s", name.c_str());
+			}
+		}
+
+		bool success = true;
+		auto debugmsg = [=](mu::Parser::exception_type &e) {
+#ifdef UNICODE
+			mu::string_type n = e.GetMsg();
+			std::string cn;
+			cn.reserve(n.size());
+			os_wcs_to_utf8(n.c_str(), n.size(), &cn[0], n.size());
+			cn = cn.c_str();
+
+			mu::string_type wtoken = e.GetToken();
+			std::string token;
+			token.reserve(wtoken.size());
+			os_wcs_to_utf8(wtoken.c_str(), wtoken.size(), &token[0], wtoken.size());
+			token = token.c_str();
+#else
+			std::string cn = e.GetMsg();
+			std::string token = e.GetToken();
+#endif
+			blog(LOG_ERROR, "%s", cn.c_str());
+			blog(LOG_WARNING, "%s", name.c_str());
+			int pos = e.GetPos();
+			if (pos >= 0) {
+				std::string er = "Expression Error At [" + std::to_string(pos) + "] in: " + expression + "\n" +
+					expression.substr(0, pos) + "[ERROR HERE]" + expression.substr(pos);
+				_errString = er;
+				blog(LOG_WARNING, er.c_str());
+			} else {
+				std::string er = "Expression Error:" + expression;
+				blog(LOG_WARNING, er.c_str());
+			}
+			if (!token.empty()) {
+				blog(LOG_WARNING, "Problem token: %s", token.c_str());
+			}
+			_err = e.GetPos();
+			blog(LOG_WARNING, "%i", e.GetCode());
+		};
+
+		try {
+#ifdef UNICODE
+			std::string cn = expression;
+			mu::string_type n;
+			n.reserve(cn.size());
+			os_utf8_to_wcs(cn.c_str(), cn.size(), &n[0], cn.size());
+			n = n.c_str();
+#else
+			std::string n = expression;
+#endif
+			_compiledMu->SetExpr(n);
+		} catch (mu::Parser::exception_type &e) {
+			debugmsg(e);
+			success = false;
+		}
+
+		double test = 0.0;
+		try {
+			test = _compiledMu->Eval();
+		} catch (mu::Parser::exception_type &e) {
+			debugmsg(e);
+			success = false;
+		}
+		blog(LOG_DEBUG, "First calcuation: %f", test);
+
+		if (success) {
 			_errString = "";
 			_expr = expression;
 		}
-
+		
 		_errStrMap[expression] = _errString;
 		_errMap[expression] = _err;
-		_compiledMap[expression] = _compiled;
+		_compiledMuMap[expression] = _compiledMu;
 	}
 	bool success()
 	{
-		return _compiled != nullptr;
+		return _errString.empty();
 	}
 	std::string errorString()
 	{
@@ -338,6 +468,7 @@ public:
 	double _keyUp;
 	double _nativeKeyModifiers;
 	double _key;
+	double _transitionDuration;
 
 	double _focus;
 
