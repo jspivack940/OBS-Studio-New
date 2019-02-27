@@ -1413,12 +1413,17 @@ private:
 		if (_isFFT)
 			pxWidth = processAudio(samples);
 
-		_sourceWidth = (double)pxWidth;
-		_sourceHeight = (double)_channels;
 		obs_enter_graphics();
-		gs_texture_destroy(_tex);
-		_tex = gs_texture_create(
-			(uint32_t)pxWidth, (uint32_t)_channels, GS_R32F, 1, (const uint8_t **)&_data, 0);
+		if (!_tex || _sourceWidth != (double)pxWidth || _sourceHeight != (double)_channels) {
+			_sourceWidth = (double)pxWidth;
+			_sourceHeight = (double)_channels;
+			gs_texture_destroy(_tex);
+			_tex = gs_texture_create(
+				(uint32_t)pxWidth, (uint32_t)_channels, GS_R32F, 1, (const uint8_t **)&_data, GS_DYNAMIC);
+		} else {
+			uint32_t linesize = pxWidth * sizeof(float);
+			gs_texture_set_image(_tex, _data, linesize, 0);
+		}
 		obs_leave_graphics();
 	}
 
