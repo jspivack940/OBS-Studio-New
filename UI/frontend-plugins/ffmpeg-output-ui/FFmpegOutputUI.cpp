@@ -653,16 +653,18 @@ void FFmpegOutputUI::on_advOutFFFormat_currentIndexChanged(int idx)
 			defaultVideoCodecDesc.id);
 
 		ui->label_1->setHidden(desc.isDevice);
-		if (desc.isDevice)
+		if (desc.isDevice) {
 			ui->stackedWidget->setCurrentIndex(2);
-		else
+			ui->advOutFFNoSpace->setHidden(desc.isDevice);
+			ui->label_3->setHidden(desc.isDevice);
+			ui->filenameFormatting->setHidden(desc.isDevice);
+			ui->overwriteIfExists->setHidden(desc.isDevice);
+			ui->filenameFormatting->setHidden(desc.isDevice);
+			ui->advOutFFDeviceList->setHidden(!desc.isDevice);
+		} else {
 			ui->stackedWidget->setCurrentIndex(ui->advOutFFType->currentIndex());
-		ui->advOutFFNoSpace->setHidden(desc.isDevice);
-		ui->label_3->setHidden(desc.isDevice);
-		ui->filenameFormatting->setHidden(desc.isDevice);
-		ui->overwriteIfExists->setHidden(desc.isDevice);
-		ui->filenameFormatting->setHidden(desc.isDevice);
-		ui->advOutFFDeviceList->setHidden(!desc.isDevice);
+		}
+
 		if (desc.isDevice) {
 			if (LoadDeviceList())
 				debug("Device list loaded correctly.\n");
