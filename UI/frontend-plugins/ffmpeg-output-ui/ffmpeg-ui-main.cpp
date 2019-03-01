@@ -130,11 +130,8 @@ void load_ffmpeg_data()
 	obs_data_set_default_int(obj, "audio_bitrate", 160);
 	obs_data_set_default_int(obj, "gop_size", 250);
 	obs_data_set_default_bool(obj, "rescale", false);
-	obs_data_set_default_bool(obj, "ignore_codec_compat", false);
+	obs_data_set_default_bool(obj, "ignore_codec_compat", true);
 	obs_data_set_default_int(obj, "audio_mixes", 1);
-	obs_data_set_default_bool(obj, "name_without_space", true);
-	obs_data_set_default_bool(obj, "overwrite_file", true);
-	obs_data_set_default_bool(obj, "is_device", false);
 	obs_data_set_default_string(obj, "format_name", "mpegts");
 
 	config->output_type = obs_data_get_int(obj, "output_type");
