@@ -38,16 +38,9 @@
 struct ffmpeg_cfg {
 	int                output_type;
 	const char         *url;//stored as FFurl in json
-	const char         *path;//stored in json as path ==> this is actually a dir
-	const char         *device_name;
-	const char         *device_id;
 	const char         *format_name;
-	bool               is_device;
 	const char         *format_mime_type;
 	const char         *format_extension; // this and the next 3 members serve to build filepath stored in pathurl
-	const char         *filename_formatting;
-	bool               overwrite_file;
-	bool               name_without_space;
 	const char         *muxer_settings;
 	int                gop_size;
 	bool               rescale;
@@ -130,17 +123,12 @@ public:
 	~FFmpegOutputUI();
 	void ShowHideDialog();
 	void LoadFormats();
-	bool LoadDeviceList();
-	bool FormatIsDevice(QComboBox *combo);
 	void ReloadCodecs(const ff_format_desc *formatDesc);
 	void Load();
 	void Save();
-	void SetupFilenameCompleter();
 	void SelectFormat(QComboBox *combo, const char *name,
-			const char *mimeType, bool isDevice);
+			const char *mimeType);
 	void SaveFormat(QComboBox *combo);
-	void SaveDevice(QComboBox *combo);
-	void SelectDevice(QComboBox *combo, const char *name, const char *id);
 	void RecalcOutputResPixels(const char *resText);
 	bool ConvertResText(const char *res, uint32_t &cx, uint32_t &cy);
 	void ResetDownscales();
@@ -148,11 +136,9 @@ public:
 	void SaveEncoder(QComboBox *combo);
 
 private slots:
-	void on_advOutFFPathBrowse_clicked();
 	void on_advOutFFIgnoreCompat_stateChanged(int state);
 	void on_advOutFFAEncoder_currentIndexChanged(int idx);
 	void on_advOutFFVEncoder_currentIndexChanged(int idx);
-	void on_advOutFFType_currentIndexChanged(int idx);
 	void on_apply_clicked();
 	void on_close_clicked();
 	void on_cancel_clicked();

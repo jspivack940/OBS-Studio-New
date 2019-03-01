@@ -30,19 +30,15 @@ namespace {
 	struct FormatDesc {
 		const char *name = nullptr;
 		const char *mimeType = nullptr;
-		const bool isDevice = false;
 		const ff_format_desc *desc = nullptr;
 
 		inline FormatDesc() = default;
-		inline FormatDesc(const char *name, const char *mimeType,
-			const bool isDevice, const ff_format_desc *desc = nullptr)
-			: name(name), mimeType(mimeType), isDevice(isDevice), desc(desc) {}
 		inline FormatDesc(const char *name, const char *mimeType,
 			const ff_format_desc *desc = nullptr)
 			: name(name), mimeType(mimeType), desc(desc) {}
 		bool operator==(const FormatDesc &f) const
 		{
-			if (!StringEquals(mimeType, f.mimeType) || f.isDevice != isDevice)
+			if (!StringEquals(mimeType, f.mimeType))
 				return false;
 			return StringEquals(name, f.name);
 		}
@@ -61,27 +57,10 @@ namespace {
 			return StringEquals(name, codecDesc.name);
 		}
 	};
-	struct DeviceDesc {
-		const char *name = nullptr;
-		const char *long_name = nullptr;
-		const ff_device_desc *desc = nullptr;
-
-		inline DeviceDesc() = default;
-		inline DeviceDesc(const char *name, const char *long_name,
-			const ff_device_desc *desc = nullptr)
-			: name(name), long_name(long_name), desc(desc) {}
-
-		bool operator==(const DeviceDesc &f) const
-		{
-			if (!StringEquals(name, f.name))
-				return false;
-			return StringEquals(long_name, f.long_name);
-		}
-	};
 }
 Q_DECLARE_METATYPE(FormatDesc)
 Q_DECLARE_METATYPE(CodecDesc)
-Q_DECLARE_METATYPE(DeviceDesc)
+
 
 static void AddCodec(QComboBox *combo, const ff_codec_desc *codec_desc)
 {
@@ -313,37 +292,10 @@ FFmpegOutputUI::FFmpegOutputUI(QWidget *parent)
 {
 	ui->setupUi(this);
 	config = new ffmpeg_cfg;
-	//ui->startstop->setStyleSheet(
-	//	QCheckBox:indicator{
-	//	   width: 110px;
-	//	   height: 79px;
-	//	}
-
-	//	QCheckBox::indicator:checked
-	//	{
-	//	  image: url(: / images / start.png);
-	//	}
-	//		QCheckBox::indicator : unchecked
-	//	{
-	//	  image: url(: / images / stop.png);
-	//	}
-	//);
-//	connect(ui->startOutput, SIGNAL(released()), this, SLOT(StartOutput()));
-//	connect(ui->stopOutput, SIGNAL(released()), this, SLOT(StopOutput()));
-}
-
-void FFmpegOutputUI::SetupFilenameCompleter()
-{
-	QStringList specList = QT_UTF8(obs_module_text("FilenameFormatting.completer")).split(QRegularExpression("\n"));
-	QCompleter *specCompleter = new QCompleter(specList);
-	specCompleter->setCaseSensitivity(Qt::CaseSensitive);
-	specCompleter->setFilterMode(Qt::MatchContains);
-	ui->filenameFormatting->setCompleter(specCompleter);
 }
 
 FFmpegOutputUI::~FFmpegOutputUI()
 {
-	delete ui->filenameFormatting->completer();
 	delete config;
 }
 
@@ -365,9 +317,9 @@ void FFmpegOutputUI::Load()
 }
 
 void FFmpegOutputUI::SelectFormat(QComboBox *combo, const char *name,
-	const char *mimeType, bool isDevice)
+	const char *mimeType)
 {
-	FormatDesc formatDesc(name, mimeType, isDevice);
+	FormatDesc formatDesc(name, mimeType);
 
 	for (int i = 0; i < combo->count(); i++) {
 		QVariant v = combo->itemData(i);
@@ -380,16 +332,6 @@ void FFmpegOutputUI::SelectFormat(QComboBox *combo, const char *name,
 	}
 
 	combo->setCurrentIndex(0);
-}
-
-bool FFmpegOutputUI::FormatIsDevice(QComboBox *combo)
-{
-	QVariant v = combo->currentData();
-	if (!v.isNull()) {
-		FormatDesc desc = v.value<FormatDesc>();
-		return desc.isDevice;
-	}
-	return false;
 }
 
 void FFmpegOutputUI::StartOutput()
@@ -410,8 +352,6 @@ void FFmpegOutputUI::StopOutput()
 	QTStr(obs_module_text("FFmpeg.FormatAudio"))
 #define VIDEO_STR \
 	QTStr(obs_module_text("FFmpeg.FormatVideo"))
-#define AV_NO_DEVICE_STR \
-	QTStr(obs_module_text("FFmpeg.NoDevice"))
 
 void FFmpegOutputUI::LoadFormats()
 {
@@ -426,7 +366,7 @@ void FFmpegOutputUI::LoadFormats()
 		bool video = ff_format_desc_has_video(format);
 		FormatDesc formatDesc(ff_format_desc_name(format),
 				ff_format_desc_mime_type(format),
-				ff_format_desc_is_device(format), format);
+				format);
 		if (audio || video) {
 			QString itemText(ff_format_desc_name(format));
 			if (audio ^ video)
@@ -445,35 +385,6 @@ void FFmpegOutputUI::LoadFormats()
 	ui->advOutFFFormat->insertItem(0, AV_FORMAT_DEFAULT_STR);
 
 	ui->advOutFFFormat->blockSignals(false);
-}
-
-
-bool FFmpegOutputUI::LoadDeviceList()
-{
-
-	if (!FormatIsDevice(ui->advOutFFFormat))
-		return false;
-	QVariant v = ui->advOutFFFormat->currentData();
-	FormatDesc desc = v.value<FormatDesc>();
-	const char *name = ff_format_desc_name(desc.desc);
-	ui->advOutFFDeviceList->blockSignals(true);
-	ui->advOutFFDeviceList->clear();
-	OBSFFDeviceDesc deviceDescs(ff_get_device_list(name));
-	const ff_device_desc *device = deviceDescs.get();
-
-	ui->advOutFFDeviceList->insertItem(0, AV_NO_DEVICE_STR);
-	while (device != nullptr) {
-		DeviceDesc deviceDesc(ff_device_desc_name(device),
-			ff_device_desc_long_name(device), device);
-		QString itemText(ff_device_desc_long_name(device));
-		ui->advOutFFDeviceList->addItem(itemText,
-			qVariantFromValue(deviceDesc));
-
-		device = ff_device_desc_next(device);
-	}
-
-	ui->advOutFFDeviceList->blockSignals(false);
-	return true;
 }
 
 void FFmpegOutputUI::SaveFormat(QComboBox *combo)
@@ -497,37 +408,6 @@ void FFmpegOutputUI::SaveFormat(QComboBox *combo)
 		config->format_mime_type = nullptr;
 		config->format_extension = nullptr;
 	}
-}
-
-void FFmpegOutputUI::SaveDevice(QComboBox *combo)
-{
-	QVariant v = combo->currentData();
-	if (!v.isNull()) {
-		DeviceDesc desc     = v.value<DeviceDesc>();
-		config->device_id   = desc.name;
-		config->device_name = desc.long_name;
-	} else {
-		config->device_id   = nullptr;
-		config->device_name = nullptr;
-	}
-}
-
-void FFmpegOutputUI::SelectDevice(QComboBox *combo, const char *name, const char *id)
-{
-	if (name) {
-		DeviceDesc deviceDesc(id, name, NULL);
-		for (int i = 0; i < combo->count(); i++) {
-			QVariant v = combo->itemData(i);
-			if (!v.isNull()) {
-				if (deviceDesc == v.value<DeviceDesc>()) {
-					combo->setCurrentIndex(i);
-					return;
-				}
-			}
-		}
-	}
-
-	combo->setCurrentIndex(0);
 }
 
 void FFmpegOutputUI::SetAdvOutputFFmpegEnablement(
@@ -610,27 +490,6 @@ void FFmpegOutputUI::ReloadCodecs(const ff_format_desc *formatDesc)
 	ui->advOutFFVEncoder->blockSignals(false);
 }
 
-void FFmpegOutputUI::on_advOutFFType_currentIndexChanged(int idx)
-{
-	config->output_type = ui->advOutFFType->currentIndex();
-	ui->advOutFFNoSpace->setHidden(idx != 0);
-	ui->overwriteIfExists->setHidden(idx != 0);
-	ui->filenameFormatting->setHidden(idx != 0);
-	ui->label_3->setHidden(idx != 0);
-}
-
-void FFmpegOutputUI::on_advOutFFPathBrowse_clicked()
-{
-	QString dir = QFileDialog::getExistingDirectory(this, QTStr("FFmpeg.SelectDirectory"),
-		ui->advOutFFRecPath->text(),
-		QFileDialog::ShowDirsOnly |
-		QFileDialog::DontResolveSymlinks);
-	if (dir.isEmpty())
-		return;
-
-	ui->advOutFFRecPath->setText(dir);
-}
-
 void FFmpegOutputUI::on_advOutFFIgnoreCompat_stateChanged(int)
 {
 	/* Little hack to reload codecs when checked */
@@ -668,29 +527,9 @@ void FFmpegOutputUI::on_advOutFFFormat_currentIndexChanged(int idx)
 		SelectEncoder(ui->advOutFFVEncoder, defaultVideoCodecDesc.name,
 			defaultVideoCodecDesc.id);
 
-		ui->label_1->setHidden(desc.isDevice);
-		if (desc.isDevice) {
-			ui->stackedWidget->setCurrentIndex(2);
-			ui->advOutFFNoSpace->setHidden(desc.isDevice);
-			ui->label_3->setHidden(desc.isDevice);
-			ui->filenameFormatting->setHidden(desc.isDevice);
-			ui->overwriteIfExists->setHidden(desc.isDevice);
-			ui->filenameFormatting->setHidden(desc.isDevice);
-			ui->advOutFFDeviceList->setHidden(!desc.isDevice);
-		} else {
-			ui->stackedWidget->setCurrentIndex(ui->advOutFFType->currentIndex());
-		}
+		ui->stackedWidget->setCurrentIndex(0);
 
-		if (desc.isDevice) {
-			if (LoadDeviceList())
-				debug("Device list loaded correctly.\n");
-			else
-				warn("Device list could not be loaded.\n");
-			if (config->device_name && config->device_id)
-				SelectDevice(ui->advOutFFDeviceList, config->device_name, config->device_id);
-		}
-	}
-	else {
+	} else {
 		ReloadCodecs(nullptr);
 		ui->advOutFFFormatDesc->setText(DEFAULT_CONTAINER_STR);
 	}

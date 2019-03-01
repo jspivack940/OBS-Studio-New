@@ -30,95 +30,16 @@ FFmpegOutputUI *doUI;
 obs_output_t *output;
 static ffmpeg_cfg *config = nullptr;
 bool main_output_running = false;
-
-static void ensure_directory_exists(std::string path)
-{
-	replace(path.begin(), path.end(), '\\', '/');
-
-	size_t last = path.rfind('/');
-	if (last == std::string::npos)
-		return;
-
-	std::string directory = path.substr(0, last);
-	os_mkdirs(directory.c_str());
-}
-
-static void FindBestFilename(std::string strPath, bool noSpace)
-{
-	int num = 2;
-
-	if (!os_file_exists(strPath.c_str()))
-		return;
-
-	const char *ext = strrchr(strPath.c_str(), '.');
-	if (!ext)
-		return;
-
-	int extStart = int(ext - strPath.c_str());
-	for (;;) {
-		std::string testPath = strPath;
-		std::string numStr;
-
-		numStr = noSpace ? "_" : " (";
-		numStr += std::to_string(num++);
-		if (!noSpace)
-			numStr += ")";
-
-		testPath.insert(extStart, numStr);
-
-		if (!os_file_exists(testPath.c_str())) {
-			strPath = testPath;
-			break;
-		}
-	}
-}
  
 bool save_ffmpeg_data()
 {
 	obs_data_t *obj = obs_data_create();
 
-	config->output_type = doUI->ui->advOutFFType->currentIndex();
+	config->output_type = 0;
 	std::string urlstr = ((QString)doUI->ui->advOutFFURL->text()).toStdString();
 	config->url = urlstr.c_str();
-	std::string  path = ((QString)doUI->ui->advOutFFRecPath->text()).toStdString();
-	config->path = path.c_str();
-	std::string filename_format = doUI->ui->filenameFormatting->text().toStdString();
-	config->filename_formatting = filename_format.c_str();
-	config->name_without_space = doUI->ui->advOutFFNoSpace->isChecked();
-	config->overwrite_file = doUI->ui->overwriteIfExists->isChecked();
 	doUI->SaveFormat(doUI->ui->advOutFFFormat);
-	config->is_device = doUI->FormatIsDevice(doUI->ui->advOutFFFormat);
-	doUI->SaveDevice(doUI->ui->advOutFFDeviceList);
 
-	/* build filepath */
-	os_dir_t *dir = config->path && config->path[0] ? os_opendir(config->path) : nullptr;
-	QMainWindow *main = (QMainWindow *)obs_frontend_get_main_window();
-	std::string strPath;
-
-	if (!dir) {
-		if (main->isVisible())
-			QMessageBox::information(main,
-				QTStr(obs_module_text("Output.BadPath.Title")),
-				QTStr(obs_module_text("Output.BadPath.Text")));
-		return false;
-	}  else {
-		os_closedir(dir);
-
-
-		strPath += path;
-
-		char lastChar = strPath.back();
-		if (lastChar != '/' && lastChar != '\\')
-			strPath += "/";
-
-		BPtr<char> filename = os_generate_formatted_filename(config->format_extension,
-			!config->name_without_space, config->filename_formatting);
-		strPath += filename;
-
-		ensure_directory_exists(strPath);
-		if (!config->overwrite_file) 
-			FindBestFilename(strPath, config->name_without_space);
-	}
 	/*-----------------------------------------------------------*/
 
 	std::string muxer_settings = ((QString)doUI->ui->advOutFFMCfg->text()).toStdString();
@@ -151,15 +72,8 @@ bool save_ffmpeg_data()
 		(doUI->ui->advOutFFTrack6->isChecked() ? (1 << 5) : 0);
 
 	obs_data_set_int(obj, "output_type", config->output_type);
-	obs_data_set_string(obj, "url", config->output_type ? config->url : strPath.c_str());
-	obs_data_set_string(obj, "path", config->path);
+	obs_data_set_string(obj, "url", config->url);
 	obs_data_set_string(obj, "FFurl", config->url);
-	obs_data_set_bool(obj, "is_device", config->is_device);
-	obs_data_set_string(obj, "device_name", config->device_name);
-	obs_data_set_string(obj, "device_id", config->device_id);
-	obs_data_set_string(obj, "filename_formatting", config->filename_formatting);
-	obs_data_set_bool(obj, "overwrite_file", config->overwrite_file);
-	obs_data_set_bool(obj, "name_without_space", config->name_without_space);
 	obs_data_set_string(obj, "format_name", config->format_name);
 	obs_data_set_string(obj, "format_mime_type", config->format_mime_type);
 	obs_data_set_string(obj, "format_extension", config->format_extension);
@@ -221,16 +135,10 @@ void load_ffmpeg_data()
 	obs_data_set_default_bool(obj, "name_without_space", true);
 	obs_data_set_default_bool(obj, "overwrite_file", true);
 	obs_data_set_default_bool(obj, "is_device", false);
+	obs_data_set_default_string(obj, "format_name", "mpegts");
 
 	config->output_type = obs_data_get_int(obj, "output_type");
 	config->url = obs_data_get_string(obj, "FFurl");
-	config->path = obs_data_get_string(obj, "path");
-	config->is_device = obs_data_get_bool(obj, "is_device");
-	config->device_name = obs_data_get_string(obj, "device_name");
-	config->device_id = obs_data_get_string(obj, "device_id");
-	config->filename_formatting = obs_data_get_string(obj, "filename_formatting");
-	config->overwrite_file = obs_data_get_bool(obj, "overwrite_file");
-	config->name_without_space = obs_data_get_bool(obj, "name_without_space");
 	config->format_name = obs_data_get_string(obj, "format_name");
 	config->format_mime_type = obs_data_get_string(obj, "format_mime_type");
 	config->format_extension = obs_data_get_string(obj, "format_extension");
@@ -255,18 +163,8 @@ void load_ffmpeg_data()
 
 	if (!doUI->ui->advOutFFFormat->count())
 		doUI->LoadFormats();
-	doUI->ui->advOutFFType->setCurrentIndex(config->output_type);
-	doUI->ui->advOutFFRecPath->setText(QT_UTF8(config->path));
 	doUI->ui->advOutFFURL->setText(QT_UTF8(config->url));
-
-	doUI->SetupFilenameCompleter();
-	doUI->ui->filenameFormatting->setToolTip(QT_UTF8(obs_module_text("FilenameFormatting.TT")));
-	doUI->ui->filenameFormatting->setText(QT_UTF8(config->filename_formatting));
-	if (config->is_device)
-		doUI->SelectFormat(doUI->ui->advOutFFFormat, config->format_name, NULL, true);
-	else
-		doUI->SelectFormat(doUI->ui->advOutFFFormat, config->format_name, config->format_mime_type, false);
-	doUI->SelectDevice(doUI->ui->advOutFFDeviceList, config->device_name, config->device_id);
+	doUI->SelectFormat(doUI->ui->advOutFFFormat, config->format_name, config->format_mime_type);
 	doUI->ui->advOutFFMCfg->setText(config->muxer_settings);
 	doUI->ui->advOutFFVBitrate->setValue(config->video_bitrate);
 	doUI->ui->advOutFFVGOPSize->setValue(config->gop_size);
@@ -340,7 +238,7 @@ void output_stop()
 void addOutputUI(void)
 {
 	QAction *action = (QAction*)obs_frontend_add_tools_menu_qaction(
-			obs_module_text("FFmpeg Output"));
+			obs_module_text("FFmpeg Streaming Output"));
 
 	obs_frontend_push_ui_translation(obs_module_get_string);
 
