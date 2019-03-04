@@ -33,26 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <windows.h>
 #include "asioselector.h"
 #include "circle-buffer.h"
-//#define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
-//#define JUCE_DLL_BUILD 1
-/*
-#define JUCE_ASIO 1
-#define JUCE_USE_WINRT_MIDI 0
-#define JUCE_WASAPI 0
-#define JUCE_DIRECTSOUND 0
-#define JUCE_ALSA 0
-#define JUCE_JACK 0
-#define JUCE_USE_ANDROID_OBOE 0
-*/
-//#include "juce_audio_devices/juce_audio_devices.h"
-//#include "JuceLibraryCode/JuceHeader.h"
-//#include "portaudio.h"
-//#include "pa_asio.h"
-#include "juce_core/juce_core.cpp"
-#include "juce_audio_basics/juce_audio_basics.cpp"
-#include "juce_audio_devices/juce_audio_devices.cpp"
-#include "juce_audio_formats/juce_audio_formats.cpp"
-#include "juce_events/juce_events.cpp"
+#include "JuceLibraryCode/JuceHeader.h"
 
 #include <QWidget>
 #include <QMenu>
@@ -352,15 +333,39 @@ public:
 
 static void audio_device_selector()
 {
-	//juce::AudioDeviceSelectorComponent;
+
 }
 
 bool obs_module_load(void)
 {
-	//juce::AudioIODeviceType;
 	obs_audio_info aoi;
 	obs_get_audio_info(&aoi);
 	manager.initialise(256, 256, nullptr, true);
+	AudioDeviceManager::AudioDeviceSetup setup =
+			manager.getAudioDeviceSetup();
+	
+	blog(LOG_INFO, "INFO");
+	blog(LOG_INFO, "BUF[%d]", setup.bufferSize);
+	blog(LOG_INFO, "IN  '%s'", setup.inputDeviceName.toStdString().c_str());
+	blog(LOG_INFO, "OUT '%s'", setup.outputDeviceName.toStdString().c_str());
+	blog(LOG_INFO, "ICH[%d]", setup.inputChannels.toInteger());
+	blog(LOG_INFO, "OCH[%d]", setup.outputChannels.toInteger());
+
+	OwnedArray<AudioIODeviceType> types;
+	manager.createAudioDeviceTypes(types);
+
+	for (int i = 0; i < types.size(); i++) {
+		blog(LOG_INFO, "TYPE: '%s'", types[i]->getTypeName().toStdString().c_str());
+		types[i]->scanForDevices();
+		StringArray deviceNames(types[i]->getDeviceNames());
+		for (int j = 0; j < deviceNames.size(); j++) {
+			AudioIODevice *device = types[i]->createDevice(deviceNames[j], deviceNames[j]);
+			blog(LOG_INFO, "NAME: '%s'", device->getName());
+		}
+	}
+
+	AudioCB *cb = new AudioCB();
+	manager.addAudioCallback(cb);
 
 	struct obs_source_info asio_input_capture = {};
 	asio_input_capture.id                     = "asio_input_capture";
@@ -383,4 +388,5 @@ void obs_module_post_load(void)
 
 void obs_module_unload(void)
 {
+	
 }
