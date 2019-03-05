@@ -20,6 +20,7 @@ extern QCefCookieManager *panel_cookies;
 enum class ListOpt : int {
 	ShowAll = 1,
 	Custom,
+	SrtCustom,
 };
 
 enum class Section : int {
@@ -30,6 +31,11 @@ enum class Section : int {
 inline bool OBSBasicSettings::IsCustomService() const
 {
 	return ui->service->currentData().toInt() == (int)ListOpt::Custom;
+}
+
+inline bool OBSBasicSettings::IsCustomSrtService() const
+{
+	return ui->service->currentData().toInt() == (int)ListOpt::SrtCustom;
 }
 
 void OBSBasicSettings::InitStreamPage()
@@ -70,15 +76,27 @@ void OBSBasicSettings::LoadStream1Settings()
 
 	const char *service = obs_data_get_string(settings, "service");
 	const char *server = obs_data_get_string(settings, "server");
+	const char *srt_server = obs_data_get_string(settings, "srt_server");
 	const char *key = obs_data_get_string(settings, "key");
+	const char *srt_key = obs_data_get_string(settings, "srt_key");
 
 	if (strcmp(type, "rtmp_custom") == 0) {
 		ui->service->setCurrentIndex(0);
 		ui->customServer->setText(server);
-
+		ui->key->setText(key);
 		bool use_auth = obs_data_get_bool(settings, "use_auth");
 		const char *username = obs_data_get_string(settings, "username");
 		const char *password = obs_data_get_string(settings, "password");
+		ui->authUsername->setText(QT_UTF8(username));
+		ui->authPw->setText(QT_UTF8(password));
+		ui->useAuth->setChecked(use_auth);
+	} else if (strcmp(type, "srt_custom") == 0) {
+		ui->service->setCurrentIndex(1);
+		ui->customServer->setText(srt_server);
+		ui->key->setText(srt_key);
+		bool use_auth = obs_data_get_bool(settings, "srt_use_auth");
+		const char *username = obs_data_get_string(settings, "srt_username");
+		const char *password = obs_data_get_string(settings, "srt_password");
 		ui->authUsername->setText(QT_UTF8(username));
 		ui->authPw->setText(QT_UTF8(password));
 		ui->useAuth->setChecked(use_auth);
@@ -90,6 +108,7 @@ void OBSBasicSettings::LoadStream1Settings()
 			idx = 1;
 		}
 		ui->service->setCurrentIndex(idx);
+		ui->key->setText(key);
 	}
 
 	UpdateServerList();
@@ -103,8 +122,6 @@ void OBSBasicSettings::LoadStream1Settings()
 		}
 		ui->server->setCurrentIndex(idx);
 	}
-
-	ui->key->setText(key);
 
 	lastService.clear();
 	on_service_currentIndexChanged(0);
@@ -122,9 +139,14 @@ void OBSBasicSettings::LoadStream1Settings()
 void OBSBasicSettings::SaveStream1Settings()
 {
 	bool customServer = IsCustomService();
-	const char *service_id = customServer
-		? "rtmp_custom"
-		: "rtmp_common";
+	bool customSrt = IsCustomSrtService();
+	const char *service_id;
+	if (!customServer && !customSrt)
+		service_id = "rtmp_common";
+	else if (!customSrt)
+		service_id = "rtmp_custom";
+	else
+		service_id = "srt_custom";
 
 	obs_service_t *oldService = main->GetService();
 	OBSData hotkeyData = obs_hotkeys_save_service(oldService);
@@ -133,12 +155,12 @@ void OBSBasicSettings::SaveStream1Settings()
 	OBSData settings = obs_data_create();
 	obs_data_release(settings);
 
-	if (!customServer) {
+	if (!customServer && !customSrt) {
 		obs_data_set_string(settings, "service",
 				QT_TO_UTF8(ui->service->currentText()));
 		obs_data_set_string(settings, "server",
 				QT_TO_UTF8(ui->server->currentData().toString()));
-	} else {
+	} else if (customServer) {
 		obs_data_set_string(settings, "server",
 				QT_TO_UTF8(ui->customServer->text()));
 		obs_data_set_bool(settings, "use_auth",
@@ -148,6 +170,17 @@ void OBSBasicSettings::SaveStream1Settings()
 					QT_TO_UTF8(ui->authUsername->text()));
 			obs_data_set_string(settings, "password",
 					QT_TO_UTF8(ui->authPw->text()));
+		}
+	} else if (customSrt) {
+		obs_data_set_string(settings, "srt_server",
+			QT_TO_UTF8(ui->customServer->text()));
+		obs_data_set_bool(settings, "srt_use_auth",
+			ui->useAuth->isChecked());
+		if (ui->useAuth->isChecked()) {
+			obs_data_set_string(settings, "srt_username",
+				QT_TO_UTF8(ui->authUsername->text()));
+			obs_data_set_string(settings, "srt_password",
+				QT_TO_UTF8(ui->authPw->text()));
 		}
 	}
 
@@ -170,9 +203,10 @@ void OBSBasicSettings::SaveStream1Settings()
 void OBSBasicSettings::UpdateKeyLink()
 {
 	bool custom = IsCustomService();
+	bool customSrt = IsCustomSrtService();
 	QString serviceName = ui->service->currentText();
 
-	if (custom)
+	if (custom || customSrt)
 		serviceName = "";
 
 	QString text = QTStr("Basic.AutoConfig.StreamPage.StreamKey");
@@ -232,6 +266,9 @@ void OBSBasicSettings::LoadServices(bool showAll)
 	ui->service->insertItem(0,
 			QTStr("Basic.AutoConfig.StreamPage.Service.Custom"),
 			QVariant((int)ListOpt::Custom));
+	ui->service->insertItem(1,
+			QTStr("Basic.AutoConfig.StreamPage.Service.CustomProtocols"),
+			QVariant((int)ListOpt::SrtCustom));
 
 	if (!lastService.isEmpty()) {
 		int idx = ui->service->findText(lastService);
@@ -257,7 +294,7 @@ void OBSBasicSettings::on_service_currentIndexChanged(int)
 		return;
 
 	std::string service = QT_TO_UTF8(ui->service->currentText());
-	bool custom = IsCustomService();
+	bool custom = IsCustomService() || IsCustomSrtService();
 
 	ui->disconnectAccount->setVisible(false);
 
@@ -373,7 +410,14 @@ void OBSBasicSettings::on_authPwShow_clicked()
 OBSService OBSBasicSettings::SpawnTempService()
 {
 	bool custom = IsCustomService();
-	const char *service_id = custom ? "rtmp_custom" : "rtmp_common";
+	bool customSrt = IsCustomSrtService();
+	const char *service_id;
+	if (!custom && !customSrt)
+		service_id = "rtmp_common";
+	else if (!customSrt)
+		service_id = "rtmp_custom";
+	else
+		service_id = "srt_custom";
 
 	OBSData settings = obs_data_create();
 	obs_data_release(settings);
@@ -383,8 +427,11 @@ OBSService OBSBasicSettings::SpawnTempService()
 				QT_TO_UTF8(ui->service->currentText()));
 		obs_data_set_string(settings, "server",
 				QT_TO_UTF8(ui->server->currentData().toString()));
-	} else {
+	} else if (custom) {
 		obs_data_set_string(settings, "server",
+				QT_TO_UTF8(ui->customServer->text()));
+	} else if (customSrt) {
+		obs_data_set_string(settings, "srt_server",
 				QT_TO_UTF8(ui->customServer->text()));
 	}
 	obs_data_set_string(settings, "key", QT_TO_UTF8(ui->key->text()));
@@ -483,7 +530,7 @@ void OBSBasicSettings::on_useStreamKey_clicked()
 
 void OBSBasicSettings::on_useAuth_toggled()
 {
-	if (!IsCustomService())
+	if (!IsCustomService() && !IsCustomSrtService())
 		return;
 
 	bool use_auth = ui->useAuth->isChecked();

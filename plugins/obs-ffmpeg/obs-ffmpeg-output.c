@@ -617,6 +617,11 @@ static const char *ffmpeg_output_getname(void *unused)
 	return obs_module_text("FFmpegOutput");
 }
 
+static const char *srt_ffmpeg_output_getname(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+	return obs_module_text("SrtFFmpegOutput");
+}
 static void ffmpeg_log_callback(void *param, int level, const char *format,
 		va_list args)
 {
@@ -1211,6 +1216,11 @@ static uint64_t ffmpeg_output_total_bytes(void *data)
 	return output->total_bytes;
 }
 
+static void srt_data(void *data, struct encoder_packet *packet)
+{
+	struct ffmpeg_output *output = data;
+}
+
 struct obs_output_info ffmpeg_output = {
 	.id        = "ffmpeg_output",
 	.flags     = OBS_OUTPUT_AUDIO |
@@ -1225,3 +1235,20 @@ struct obs_output_info ffmpeg_output = {
 	.raw_audio2 = receive_audio,
 	.get_total_bytes = ffmpeg_output_total_bytes,
 };
+//
+//struct obs_output_info srt_ffmpeg_output = {
+//	.id = "srt_output",
+//	.flags = OBS_OUTPUT_AUDIO |
+//		     OBS_OUTPUT_VIDEO |
+//		     OBS_OUTPUT_ENCODED |
+//		     OBS_OUTPUT_MULTI_TRACK,
+//	.encoded_video_codecs = "h264",
+//	.encoded_audio_codecs = "aac",
+//	.get_name = srt_ffmpeg_output_getname,
+//	.create = ffmpeg_output_create,
+//	.destroy = ffmpeg_output_destroy,
+//	.start = ffmpeg_output_start,
+//	.stop = ffmpeg_output_stop,
+//	.encoded_packet = srt_data,
+//	.get_total_bytes = ffmpeg_output_total_bytes,
+//};
