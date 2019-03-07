@@ -1219,6 +1219,16 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_uint  (basicConfig, "AdvOut", "TrackIndex", 1);
 	config_set_default_string(basicConfig, "AdvOut", "Encoder", "obs_x264");
 
+	config_set_default_string(basicConfig, "AdvOut", "StreamFFFormat", "flv");
+	config_set_default_uint(basicConfig, "AdvOut", "StreamFFVBitrate", 2500);
+	config_set_default_uint(basicConfig, "AdvOut", "StreamFFVGOPSize", 250);
+	config_set_default_bool(basicConfig, "AdvOut", "StreamFFUseRescale",
+			false);
+	config_set_default_bool(basicConfig, "AdvOut", "StreamFFIgnoreCompat",
+			true);
+	config_set_default_uint(basicConfig, "AdvOut", "StreamFFABitrate", 160);
+	config_set_default_uint(basicConfig, "AdvOut", "StreamFFAudioMixes", 1);
+
 	config_set_default_string(basicConfig, "AdvOut", "RecType", "Standard");
 
 	config_set_default_string(basicConfig, "AdvOut", "RecFilePath",
@@ -1230,8 +1240,6 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_string(basicConfig, "AdvOut", "RecEncoder",
 			"none");
 
-	config_set_default_bool  (basicConfig, "AdvOut", "FFOutputToFile",
-			true);
 	config_set_default_string(basicConfig, "AdvOut", "FFFilePath",
 			GetDefaultVideoSavePath().c_str());
 	config_set_default_string(basicConfig, "AdvOut", "FFExtension", "mp4");
