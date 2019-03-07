@@ -63,6 +63,7 @@ using namespace Gdiplus;
 #define S_EXTENTS_CX                    "extents_cx"
 #define S_EXTENTS_CY                    "extents_cy"
 #define S_TRANSFORM                     "transform"
+#define S_RATE                          "rate"
 
 #define S_ALIGN_LEFT                    "left"
 #define S_ALIGN_CENTER                  "center"
@@ -103,6 +104,7 @@ using namespace Gdiplus;
 #define T_EXTENTS_CX                    T_("Width")
 #define T_EXTENTS_CY                    T_("Height")
 #define T_TRANSFORM                     T_("Transform")
+#define T_RATE                          T_("Rate")
 
 #define T_FILTER_TEXT_FILES             T_("Filter.TextFiles")
 #define T_FILTER_ALL_FILES              T_("Filter.AllFiles")
@@ -209,6 +211,7 @@ struct TextSource {
 	time_t file_timestamp = 0;
 	bool update_file = false;
 	float update_time_elapsed = 0.0f;
+	float seconds_per_update = 1.0f;
 
 	wstring text;
 	wstring face;
@@ -672,6 +675,7 @@ inline void TextSource::Update(obs_data_t *s)
 	uint32_t n_extents_cx  = obs_data_get_uint32(s, S_EXTENTS_CX);
 	uint32_t n_extents_cy  = obs_data_get_uint32(s, S_EXTENTS_CY);
 	int new_text_transform = (int)obs_data_get_int(s, S_TRANSFORM);
+	float new_rate         = (float)obs_data_get_double(s, S_RATE);
 
 	const char *font_face  = obs_data_get_string(font_obj, "face");
 	int font_size          = (int)obs_data_get_int(font_obj, "size");
@@ -693,7 +697,8 @@ inline void TextSource::Update(obs_data_t *s)
 	    new_bold      != bold      ||
 	    new_italic    != italic    ||
 	    new_underline != underline ||
-	    new_strikeout != strikeout) {
+	    new_strikeout != strikeout ||
+	    seconds_per_update != new_rate) {
 
 		face = new_face;
 		face_size = font_size;
@@ -701,6 +706,7 @@ inline void TextSource::Update(obs_data_t *s)
 		italic = new_italic;
 		underline = new_underline;
 		strikeout = new_strikeout;
+		seconds_per_update = new_rate;
 
 		UpdateFont();
 	}
@@ -790,7 +796,7 @@ inline void TextSource::Tick(float seconds)
 
 	update_time_elapsed += seconds;
 
-	if (update_time_elapsed >= 1.0f) {
+	if (update_time_elapsed >= seconds_per_update) {
 		time_t t = get_modified_timestamp(file.c_str());
 		update_time_elapsed = 0.0f;
 
@@ -849,6 +855,7 @@ static bool use_file_changed(obs_properties_t *props, obs_property_t *p,
 
 	set_vis(use_file, S_TEXT, false);
 	set_vis(use_file, S_FILE, true);
+	set_vis(use_file, S_RATE, true);
 	return true;
 }
 
@@ -908,6 +915,7 @@ static obs_properties_t *get_properties(void *data)
 
 	p = obs_properties_add_bool(props, S_USE_FILE, T_USE_FILE);
 	obs_property_set_modified_callback(p, use_file_changed);
+	obs_properties_add_float(props, S_RATE, T_RATE, 0.05, 10, 0.05);
 
 	string filter;
 	filter += T_FILTER_TEXT_FILES;
@@ -1041,6 +1049,7 @@ bool obs_module_load(void)
 		obs_data_set_default_int(settings, S_EXTENTS_CX, 100);
 		obs_data_set_default_int(settings, S_EXTENTS_CY, 100);
 		obs_data_set_default_int(settings, S_TRANSFORM, S_TRANSFORM_NONE);
+		obs_data_set_default_double(settings, S_TEXT, 1.0);
 
 		obs_data_release(font_obj);
 	};
