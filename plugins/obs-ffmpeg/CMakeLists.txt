@@ -12,6 +12,7 @@ include_directories(${FFMPEG_INCLUDE_DIRS})
 set(obs-ffmpeg_HEADERS
 	obs-ffmpeg-formats.h
 	obs-ffmpeg-compat.h
+	ffmpeg-encoded-output.h
 	closest-pixel-format.h)
 
 set(obs-ffmpeg_SOURCES
@@ -20,6 +21,7 @@ set(obs-ffmpeg_SOURCES
 	obs-ffmpeg-nvenc.c
 	obs-ffmpeg-output.c
 	obs-ffmpeg-mux.c
+	ffmpeg-encoded-output.c
 	obs-ffmpeg-source.c)
 
 if(UNIX AND NOT APPLE)
