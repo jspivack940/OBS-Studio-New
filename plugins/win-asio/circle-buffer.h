@@ -366,9 +366,8 @@ public:
 		if (!events_prepped) {
 			device_options.channel_count = input_chs;
 			receive_signals = (WinHandle*)calloc(input_chs, sizeof(WinHandle));
-			for (int i = 0; i < input_chs; i++) {
+			for (int i = 0; i < input_chs; i++)
 				receive_signals[i] = CreateEvent(nullptr, true, false, nullptr);
-			}
 			events_prepped = true;
 		}
 	}
