@@ -55,6 +55,7 @@ public:
 	char*    device_name;
 	uint64_t device_index;
 	uint64_t first_ts; // first timestamp
+	speaker_layout layout;
 
 	/* channels info */
 	DWORD input_channels;            // total number of input channels
@@ -131,9 +132,6 @@ public:
 	/* main method passing audio from listener to obs */
 	bool render_audio(device_source_audio* asio_buffer, long route[])
 	{
-
-		struct obs_audio_info aoi;
-		obs_get_audio_info(&aoi);
 		obs_source_audio out;
 		out.format = asio_buffer->format;
 		if (!is_audio_planar(out.format))
@@ -161,7 +159,7 @@ public:
 		if (unmuted_chs.size() == 0)
 			return false;
 
-		short channels = get_audio_channels(aoi.speakers);
+		short channels = get_audio_channels(layout);
 		for (short i = 0; i < channels; i++) {
 			if (route[i] >= 0 && route[i] < asio_buffer->input_chs) {
 				out.data[i] = asio_buffer->data[route[i]];
@@ -170,7 +168,7 @@ public:
 			}
 		}
 
-		out.speakers = aoi.speakers;
+		out.speakers = layout;
 
 		obs_source_output_audio(source, &out);
 		return true;

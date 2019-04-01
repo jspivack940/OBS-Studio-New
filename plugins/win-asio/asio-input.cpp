@@ -133,6 +133,18 @@ static bool asio_settings_changed(obs_properties_t *props, obs_property_t *list,
 	return true;
 }
 
+static std::vector<speaker_layout> known_layouts = {
+	SPEAKERS_MONO,        /**< Channels: MONO */
+	SPEAKERS_STEREO,      /**< Channels: FL, FR */
+	SPEAKERS_2POINT1,     /**< Channels: FL, FR, LFE */
+	SPEAKERS_4POINT0,     /**< Channels: FL, FR, FC, RC */
+	SPEAKERS_4POINT1,     /**< Channels: FL, FR, FC, LFE, RC */
+	SPEAKERS_5POINT1,     /**< Channels: FL, FR, FC, LFE, RL, RR */
+	SPEAKERS_7POINT1,     /**< Channels: FL, FR, FC, LFE, RL, RR, SL, SR */
+};
+
+static std::vector<std::string> known_layouts_str = {"Mono", "Stereo", "2.1", "4.0", "4.1", "5.1", "7.1"};
+
 class AudioCB : public juce::AudioIODeviceCallback {
 private:
 	device_buffer *_buffer = nullptr;
@@ -237,6 +249,7 @@ public:
 		ASIOPlugin *      plugin = static_cast<ASIOPlugin *>(vptr);
 		obs_properties_t *props;
 		obs_property_t *  devices;
+		obs_property_t *  format;
 		obs_property_t *  rate;
 		obs_property_t *  bit_depth;
 		obs_property_t *  buffer_size;
@@ -250,8 +263,12 @@ public:
 		fill_out_devices(devices);
 		obs_property_set_long_description(devices, obs_module_text("ASIO Devices"));
 
-		unsigned int recorded_channels = get_obs_output_channels();
+		format = obs_properties_add_list(props, "speaker_layout", obs_module_text("Format"), OBS_COMBO_TYPE_LIST,
+				OBS_COMBO_FORMAT_INT);
+		for (size_t i = 0; i < known_layouts.size(); i++)
+			obs_property_list_add_int(format, known_layouts_str[i].c_str(), known_layouts[i]);
 
+		unsigned int recorded_channels = get_obs_output_channels();
 		for (size_t i = 0; i < recorded_channels; i++) {
 			route[i] = obs_properties_add_list(props, ("route " + std::to_string(i)).c_str(),
 					obs_module_text(("Route." + std::to_string(i)).c_str()), OBS_COMBO_TYPE_LIST,
@@ -265,7 +282,8 @@ public:
 
 	void update(obs_data_t *settings)
 	{
-		std::string name     = obs_data_get_string(settings, "device_id");
+		std::string name      = obs_data_get_string(settings, "device_id");
+		speaker_layout layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 		AudioCB *   callback = nullptr;
 
 		for (int i = 0; i < callbacks.size(); i++) {
@@ -306,18 +324,18 @@ public:
 			device_buffer *buffer = callback->getBuffer();
 			listener->disconnect();
 
-			int recorded_channels = get_obs_output_channels();
+			int recorded_channels = get_audio_channels(layout);
 			for (int i = 0; i < recorded_channels; i++) {
 				std::string route_str = "route " + std::to_string(i);
 				listener->route[i]    = (int)obs_data_get_int(settings, route_str.c_str());
 			}
 
+			listener->layout      = layout;
 			listener->muted_chs   = listener->_get_muted_chs(listener->route);
 			listener->unmuted_chs = listener->_get_unmuted_chs(listener->route);
 
 			buffer->add_listener(listener);
 		} else {
-			//listener->device_index = (uint64_t)_device;
 			listener->disconnect();
 		}
 	}
@@ -331,12 +349,18 @@ public:
 
 	static void Defaults(obs_data_t *settings)
 	{
-		int recorded_channels = get_obs_output_channels();
+		struct obs_audio_info aoi;
+		obs_get_audio_info(&aoi);
+		int recorded_channels = get_audio_channels(aoi.speakers);
+
+		// default is muted channels
 		for (unsigned int i = 0; i < recorded_channels; i++) {
 			std::string name = "route " + std::to_string(i);
-			// default is muted channels
 			obs_data_set_default_int(settings, name.c_str(), -1);
 		}
+
+		obs_data_set_default_int(settings, "speaker_layout",
+				aoi.speakers);
 	}
 
 	static const char *Name(void *unused)
