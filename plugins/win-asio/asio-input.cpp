@@ -135,6 +135,14 @@ public:
 		return _buffer;
 	}
 
+	void setDevice(AudioIODevice *device, const char *name)
+	{
+		_device = device;
+		if (_name)
+			bfree(_name);
+		_name   = bstrdup(name);
+	}
+
 	AudioCB(device_buffer *buffer, AudioIODevice *device, const char *name)
 	{
 		_buffer = buffer;
@@ -252,10 +260,33 @@ public:
 		speaker_layout layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 		AudioCB *   callback = nullptr;
 
+		OwnedArray<AudioIODeviceType> types;
+		manager.createAudioDeviceTypes(types);
+		AudioIODeviceType *asio_type = nullptr;
+		for (int i = 0; i < types.size(); i++) {
+			if (types[i]->getTypeName().toStdString() != "ASIO") {
+				continue;
+			} else {
+				types[i]->scanForDevices();
+				asio_type = types[i];
+				break;
+			}
+		}
+		if (!asio_type)
+			return;
+
 		for (int i = 0; i < callbacks.size(); i++) {
 			AudioCB *      cb     = callbacks[i];
 			AudioIODevice *device = cb->getDevice();
-			if (device->getName().toStdString() == name) {
+			std::string    n      = cb->getName();
+			if (n == name) {
+				if (!device) {
+					String deviceName = name.c_str();
+					device            = asio_type->createDevice(deviceName, deviceName);
+					cb->getBuffer()->device_index = (uint64_t)device;
+					cb->setDevice(device, name.c_str());
+				}
+
 				_device  = device;
 				callback = cb;
 				break;
@@ -343,10 +374,32 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	AudioCB *      _callback = nullptr;
 	AudioIODevice *_device   = nullptr;
 
+	OwnedArray<AudioIODeviceType> types;
+	manager.createAudioDeviceTypes(types);
+	AudioIODeviceType *asio_type = nullptr;
+	for (int i = 0; i < types.size(); i++) {
+		if (types[i]->getTypeName().toStdString() != "ASIO") {
+			continue;
+		} else {
+			types[i]->scanForDevices();
+			asio_type = types[i];
+			break;
+		}
+	}
+	if (!asio_type)
+		return false;
+
 	for (int i = 0; i < callbacks.size(); i++) {
 		AudioCB *      cb     = callbacks[i];
 		AudioIODevice *device = cb->getDevice();
-		if (device->getName().toStdString() == name) {
+		std::string    n      = cb->getName();
+		if (n == name) {
+			if (!device) {
+				String deviceName             = name.c_str();
+				device                        = asio_type->createDevice(deviceName, deviceName);
+				cb->getBuffer()->device_index = (uint64_t)device;
+				cb->setDevice(device, name.c_str());
+			}
 			_device   = device;
 			_callback = cb;
 			break;
@@ -444,12 +497,12 @@ bool obs_module_load(void)
 		types[i]->scanForDevices();
 		StringArray deviceNames(types[i]->getDeviceNames());
 		for (int j = 0; j < deviceNames.size(); j++) {
-			AudioIODevice *device = types[i]->createDevice(deviceNames[j], deviceNames[j]);
+			//AudioIODevice *device = types[i]->createDevice(deviceNames[j], deviceNames[j]);
 			device_buffer *buffer = new device_buffer();
 			char *         name   = bstrdup(deviceNames[j].toStdString().c_str());
-			buffer->device_index = (uint64_t)device;
+			//buffer->device_index = (uint64_t)device;
 			buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
-			AudioCB *cb = new AudioCB(buffer, device, name);
+			AudioCB *cb = new AudioCB(buffer, nullptr, name);
 			bfree(name);
 			callbacks.push_back(cb);
 			buffers.push_back(buffer);
