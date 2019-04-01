@@ -432,18 +432,7 @@ bool obs_module_load(void)
 	obs_audio_info aoi;
 	obs_get_audio_info(&aoi);
 
-	char *                            file = obs_module_file("settings.xml");
-	std::unique_ptr<juce::XmlElement> xml;
-	if (os_file_exists(file))
-		xml = juce::parseXML(juce::File(file));
-	else
-		xml = nullptr;
-	bfree(file);
-
-	if (xml.get() == nullptr)
-		manager.initialiseWithDefaultDevices(256, 256);
-	else
-		manager.initialise(256, 256, xml.get(), true);
+	manager.initialise(256, 256, nullptr, true);
 	AudioDeviceManager::AudioDeviceSetup setup = manager.getAudioDeviceSetup();
 
 	OwnedArray<AudioIODeviceType> types;
@@ -467,10 +456,6 @@ bool obs_module_load(void)
 		}
 	}
 
-	AudioIODevice *selected = manager.getCurrentAudioDevice();
-	if (selected && !selected->isPlaying())
-		selected->start(nullptr);
-
 	struct obs_source_info asio_input_capture = {};
 	asio_input_capture.id                     = "asio_input_capture";
 	asio_input_capture.type                   = OBS_SOURCE_TYPE_INPUT;
@@ -488,20 +473,15 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-	juce::XmlElement *xml  = manager.createStateXml();
-	char *            file = obs_module_file("settings.xml");
-	if (xml) {
-		const juce::String &str    = xml->getText();
-		std::string         xmlstr = str.toStdString();
-		blog(LOG_DEBUG, "xml\n%s", xmlstr.c_str());
-		xml->writeToFile(juce::File(file), "");
-	} else {
-		os_quick_write_utf8_file(file, "", 2, false);
-	}
-	bfree(file);
-
 	for (int i = 0; i < callbacks.size(); i++) {
 		AudioCB *      cb     = callbacks[i];
+		AudioIODevice *device = cb->getDevice();
+		if (device) {
+			if (device->isPlaying())
+				device->stop();
+			if (device->isOpen())
+				device->close();
+		}
 		device_buffer *buffer = cb->getBuffer();
 		bfree((char*)buffer->device_options.name);
 		delete buffer;
