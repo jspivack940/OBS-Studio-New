@@ -15,10 +15,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* For full GPL v2 compatibility it is required to build portaudio libs with
+/* For full GPL v2 compatibility it is required to build libs with
  * our open source sdk instead of steinberg sdk , see our fork:
  * https://github.com/pkviet/portaudio , branch : openasio
- * If you build Portaudio with original asio sdk, you are free to do so to the
+ * If you build with original asio sdk, you are free to do so to the
  * extent that you do not distribute your binaries.
  */
 
@@ -31,22 +31,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <vector>
 #include <stdio.h>
 #include <windows.h>
-//#include "asioselector.h"
 #include "circle-buffer.h"
 #include "JuceLibraryCode/JuceHeader.h"
-/*
-#include <QWidget>
-#include <QMenu>
-#include <QMenuBar>
-#include <QMainWindow>
-#include <QWindow>
-#include <QAction>
-#include <QMessageBox>
-#include <QString>
-#include <QLabel>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-*/
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
@@ -54,7 +40,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
 #define blog(level, msg, ...) blog(level, "asio-input: " msg, ##__VA_ARGS__)
 
 static void                  fill_out_devices(obs_property_t *prop);
-std::vector<asio_listener *> listener_list;
+static std::vector<asio_listener *> listener_list;
 
 static juce::AudioDeviceManager manager;
 class ASIOPlugin;
@@ -63,12 +49,8 @@ class AudioCB;
 static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
 static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
 
-std::vector<AudioCB *>       callbacks;
-std::vector<device_buffer *> buffers;
-
-/* ========================================================================== */
-/*          conversions between portaudio and obs and utility functions       */
-/* ========================================================================== */
+static std::vector<AudioCB *>       callbacks;
+static std::vector<device_buffer *> buffers;
 
 enum audio_format string_to_obs_audio_format(std::string format)
 {
@@ -117,20 +99,6 @@ int get_obs_output_channels()
 	struct obs_audio_info aoi;
 	obs_get_audio_info(&aoi);
 	return (int)get_audio_channels(aoi.speakers);
-}
-
-/* callback when sample rate, buffer, sample bitdepth are changed. All the
-listeners are updated and the stream is restarted. */
-static bool asio_settings_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
-{
-	size_t       i;
-	bool         reset       = false;
-	const char * curDeviceId = obs_data_get_string(settings, "device_id");
-	long         cur_rate    = obs_data_get_int(settings, "sample rate");
-	long         cur_buffer  = obs_data_get_int(settings, "buffer");
-	audio_format cur_format  = (audio_format)obs_data_get_int(settings, "bit depth");
-
-	return true;
 }
 
 static std::vector<speaker_layout> known_layouts = {
@@ -183,13 +151,14 @@ public:
 			int numOutputChannels, int numSamples)
 	{
 		uint64_t ts = os_gettime_ns();
-		//_buffer->write_buffer_planar(inputChannelData, numInputChannels * numSamples * sizeof(float), ts);
 		_buffer->write_buffer_planar(inputChannelData, numInputChannels, numSamples, ts);
+		UNUSED_PARAMETER(numOutputChannels);
+		UNUSED_PARAMETER(outputChannelData);
 	}
 
 	void audioDeviceAboutToStart(juce::AudioIODevice *device)
 	{
-		blog(LOG_INFO, "Starting (%s)", device->getName());
+		blog(LOG_INFO, "Starting (%s)", device->getName().toStdString().c_str());
 		device_buffer_options opts;
 		opts.buffer_size   = device->getCurrentBufferSizeSamples();
 		opts.channel_count = (uint32_t)device->getActiveInputChannels().countNumberOfSetBits();
@@ -202,7 +171,7 @@ public:
 
 	void audioDeviceStopped()
 	{
-		blog(LOG_INFO, "Stopped (%s)", _device->getName());
+		blog(LOG_INFO, "Stopped (%s)", _device->getName().toStdString().c_str());
 	}
 
 	void audioDeviceErrror(const juce::String &errorMessage)
@@ -246,13 +215,10 @@ public:
 
 	static obs_properties_t *Properties(void *vptr)
 	{
-		ASIOPlugin *      plugin = static_cast<ASIOPlugin *>(vptr);
+		UNUSED_PARAMETER(vptr);
 		obs_properties_t *props;
 		obs_property_t *  devices;
 		obs_property_t *  format;
-		obs_property_t *  rate;
-		obs_property_t *  bit_depth;
-		obs_property_t *  buffer_size;
 		obs_property_t *  route[MAX_AUDIO_CHANNELS];
 
 		props = obs_properties_create();
@@ -354,7 +320,7 @@ public:
 		int recorded_channels = get_audio_channels(aoi.speakers);
 
 		// default is muted channels
-		for (unsigned int i = 0; i < recorded_channels; i++) {
+		for (int i = 0; i < recorded_channels; i++) {
 			std::string name = "route " + std::to_string(i);
 			obs_data_set_default_int(settings, name.c_str(), -1);
 		}
@@ -372,6 +338,7 @@ public:
 
 static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
+	UNUSED_PARAMETER(props);
 	std::string    name      = obs_data_get_string(settings, "device_id");
 	AudioCB *      _callback = nullptr;
 	AudioIODevice *_device   = nullptr;
@@ -395,7 +362,7 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	juce::StringArray names = _device->getInputChannelNames();
 	int input_channels = names.size();
 
-	for (unsigned int i = 0; i < input_channels; i++)
+	for (int i = 0; i < input_channels; i++)
 		obs_property_list_add_int(list, names[i].toStdString().c_str(), i);
 
 	return true;
@@ -405,17 +372,8 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
 	size_t          i;
-	bool            reset       = false;
 	const char *    curDeviceId = obs_data_get_string(settings, "device_id");
-	obs_property_t *sample_rate = obs_properties_get(props, "sample rate");
-	obs_property_t *bit_depth   = obs_properties_get(props, "bit depth");
-	obs_property_t *buffer_size = obs_properties_get(props, "buffer");
 	obs_property_t *route[MAX_AUDIO_CHANNELS];
-
-	long         cur_rate, cur_buffer;
-	audio_format cur_format;
-
-	long minBuf, maxBuf, prefBuf, gran;
 
 	// get channel number from output speaker layout set by obs
 	DWORD recorded_channels = get_obs_output_channels();
@@ -461,16 +419,9 @@ static void fill_out_devices(obs_property_t *prop)
 	}
 }
 
-/* ========================================================================== */
-/*                           main module methods                              */
-/*                                                                            */
-/* ========================================================================== */
-
 char *os_replace_slash(const char *dir)
 {
 	dstr dir_str;
-	int  ret;
-
 	dstr_init_copy(&dir_str, dir);
 	dstr_replace(&dir_str, "\\", "/");
 	return dir_str.array;
@@ -549,11 +500,8 @@ void obs_module_unload(void)
 	}
 	bfree(file);
 
-	AudioCB *      _callback = nullptr;
-	AudioIODevice *_device   = nullptr;
 	for (int i = 0; i < callbacks.size(); i++) {
 		AudioCB *      cb     = callbacks[i];
-		AudioIODevice *device = cb->getDevice();
 		device_buffer *buffer = cb->getBuffer();
 		bfree((char*)buffer->device_options.name);
 		delete buffer;
