@@ -189,6 +189,8 @@ public:
 	}
 };
 
+static bool show_panel(obs_properties_t *props, obs_property_t *property, void *data);
+
 class ASIOPlugin {
 private:
 	AudioIODevice *_device = nullptr;
@@ -196,6 +198,11 @@ private:
 	std::vector<uint16_t> _route;
 	speaker_layout        _speakers;
 public:
+	AudioIODevice *getDevice()
+	{
+		return _device;
+	}
+
 	ASIOPlugin::ASIOPlugin(obs_data_t *settings, obs_source_t *source)
 	{
 		listener = new asio_listener();
@@ -227,6 +234,7 @@ public:
 		obs_properties_t *props;
 		obs_property_t *  devices;
 		obs_property_t *  format;
+		obs_property_t *  panel;
 		obs_property_t *  route[MAX_AUDIO_CHANNELS];
 
 		props = obs_properties_create();
@@ -250,6 +258,15 @@ public:
 			obs_property_set_long_description(
 					route[i], obs_module_text(("Route.Desc." + std::to_string(i)).c_str()));
 		}
+
+		//obs_properties_add_button(props, "ctrl", obs_module_text("Control Panel"), d);
+		panel = obs_properties_add_button2(props, "ctrl", obs_module_text("Control Panel"), show_panel, vptr);
+		ASIOPlugin *   plugin = static_cast<ASIOPlugin *>(vptr);
+		AudioIODevice *device = nullptr;
+		if (plugin)
+			device = plugin->getDevice();
+
+		obs_property_set_visible(panel, device && device->hasControlPanel());
 
 		return props;
 	}
@@ -366,6 +383,17 @@ public:
 		return obs_module_text("ASIO");
 	}
 };
+
+static bool show_panel(obs_properties_t *props, obs_property_t *property, void *data)
+{
+	if (!data)
+		return false;
+	ASIOPlugin *   plugin = static_cast<ASIOPlugin *>(data);
+	AudioIODevice *device = plugin->getDevice();
+	if (device && device->hasControlPanel())
+		device->showControlPanel();
+	return false;
+}
 
 static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
@@ -534,9 +562,11 @@ void obs_module_unload(void)
 				device->stop();
 			if (device->isOpen())
 				device->close();
+			delete device;
 		}
 		device_buffer *buffer = cb->getBuffer();
 		bfree((char*)buffer->device_options.name);
 		delete buffer;
+		delete cb;
 	}
 }
