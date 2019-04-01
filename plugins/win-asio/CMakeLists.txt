@@ -1,18 +1,18 @@
 project(win-asio)
 
-set(CMAKE_PREFIX_PATH "${QTDIR}")
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
+#set(CMAKE_PREFIX_PATH "${QTDIR}")
+#set(CMAKE_INCLUDE_CURRENT_DIR ON)
+#set(CMAKE_AUTOMOC ON)
+#set(CMAKE_AUTOUIC ON)
 
 find_package(LibObs REQUIRED)
 find_package(Qt5Core REQUIRED)
-find_package(Qt5Widgets REQUIRED)
+#find_package(Qt5Widgets REQUIRED)
 
 include_directories(
 	${CMAKE_SOURCE_DIR}/UI/obs-frontend-api
-	${Qt5Core_INCLUDES}
-	${Qt5Widgets_INCLUDES}
+#	${Qt5Core_INCLUDES}
+#	${Qt5Widgets_INCLUDES}
 	${JUCE_INCLUDE_DIR}
 	${JUCE_INCLUDE_DIR}/modules
 )
@@ -23,11 +23,11 @@ set(juce-sdk_SOURCES
 
 set(win-asio_HEADERS
 	circle-buffer.h
-	asioselector.h
+#	asioselector.h
 	)
 
 set(win-asio_SOURCES
-	asioselector.cpp
+#	asioselector.cpp
 	asio-input.cpp
 	)
 
@@ -35,7 +35,7 @@ set(win-asio_QRC
 	asio-input.qrc
 	)
 
-qt5_add_resources(win-asio_QRC_SOURCES ${win-asio_QRC})
+#qt5_add_resources(win-asio_QRC_SOURCES ${win-asio_QRC})
 
 add_library(win-asio MODULE
 	${win-asio_SOURCES}
@@ -48,8 +48,8 @@ add_library(win-asio MODULE
 target_link_libraries(win-asio
 	libobs
 	obs-frontend-api
-	Qt5::Core
-	Qt5::Widgets
+#	Qt5::Core
+#	Qt5::Widgets
 	${JUCE_LIBRARY}
 )
 
