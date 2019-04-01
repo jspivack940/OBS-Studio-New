@@ -50,11 +50,11 @@ public:
 
 	obs_source_t*  source;
 	device_buffer* buffer = nullptr;
-	//	listener_pair *parameters;
+
 	/*asio device and info */
 	char*    device_name;
 	uint64_t device_index;
-	uint64_t first_ts; // first timestamp
+	uint64_t first_ts;
 	speaker_layout layout;
 
 	/* channels info */
@@ -69,9 +69,6 @@ public:
 
 	// signals
 	WinHandle stop_listening_signal;
-
-	// WinHandle reconnectThread;
-	// WinHandle *captureThread;
 
 	bool isASIOActive     = false;
 	bool reconnecting     = false;
@@ -92,12 +89,12 @@ public:
 	{
 		const void*       address = static_cast<const void*>(source);
 		std::stringstream ss;
-		ss << "0x" << std::uppercase << (int)address;
+		ss << "0x" << std::hex << (uint64_t)address;
 		std::string name = ss.str();
 		return name;
 	};
 
-	asio_listener() : source(NULL), first_ts(0), device_index(-1)
+	asio_listener() : source(NULL), first_ts(0ULL), device_index(0ULL)
 	{
 		InitializeCriticalSection(&settings_mutex);
 
@@ -115,7 +112,7 @@ public:
 
 	bool disconnect()
 	{
-		device_index = -1;
+		device_index = 0ULL;
 		isASIOActive = false;
 		// wait for 2-3 buffers to pass
 		// first buffer may already be processing
@@ -149,9 +146,8 @@ public:
 		// cache a silent buffer
 		size_t buffer_size = (out.frames * sizeof(bytedepth_format(out.format)));
 		if (silent_buffer_size < buffer_size) {
-			if (silent_buffer) {
+			if (silent_buffer)
 				bfree(silent_buffer);
-			}
 			silent_buffer      = (uint8_t*)bzalloc(buffer_size);
 			silent_buffer_size = buffer_size;
 		}
@@ -159,13 +155,12 @@ public:
 		if (unmuted_chs.size() == 0)
 			return false;
 
-		short channels = get_audio_channels(layout);
-		for (short i = 0; i < channels; i++) {
-			if (route[i] >= 0 && route[i] < asio_buffer->input_chs) {
+		int channels = (int)get_audio_channels(layout);
+		for (int i = 0; i < channels; i++) {
+			if (route[i] >= 0 && route[i] < asio_buffer->input_chs)
 				out.data[i] = asio_buffer->data[route[i]];
-			} else {
+			else
 				out.data[i] = silent_buffer;
-			}
 		}
 
 		out.speakers = layout;
@@ -179,9 +174,8 @@ public:
 		std::vector<short> silent_chs;
 		silent_chs.reserve(MAX_AUDIO_CHANNELS);
 		for (short i = 0; i < MAX_AUDIO_CHANNELS; i++) {
-			if (route_array[i] == -1) {
+			if (route_array[i] == -1)
 				silent_chs.push_back(i);
-			}
 		}
 		return silent_chs;
 	}
@@ -191,9 +185,8 @@ public:
 		std::vector<short> unmuted_chs;
 		unmuted_chs.reserve(MAX_AUDIO_CHANNELS);
 		for (short i = 0; i < MAX_AUDIO_CHANNELS; i++) {
-			if (route_array[i] >= 0) {
+			if (route_array[i] >= 0)
 				unmuted_chs.push_back(i);
-			}
 		}
 		return unmuted_chs;
 	}
@@ -215,11 +208,8 @@ private:
 	WinHandle* receive_signals;
 	// create a square tick signal w/ two events
 	WinHandle all_recieved_signal;
-	WinHandle all_recieved_signal_2;
 	// to close out the device
 	WinHandle stop_listening_signal;
-	// tell listeners to to reinit
-	// WinHandle wait_for_reset_signal;
 
 	bool all_prepped           = false;
 	bool buffer_prepped        = false;
@@ -301,7 +291,6 @@ public:
 		buffer_count = 32;
 
 		all_recieved_signal   = CreateEvent(nullptr, true, false, nullptr);
-		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
 		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
 
@@ -319,7 +308,6 @@ public:
 		buffer_count = buffers ? buffers : 32;
 
 		all_recieved_signal   = CreateEvent(nullptr, true, false, nullptr);
-		all_recieved_signal_2 = CreateEvent(nullptr, true, true, nullptr);
 		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
 
@@ -379,14 +367,14 @@ public:
 	{
 		if (!circle_buffer_prepped) {
 			// create a buffer w/ a minimum of 4 slots and a target of a fraction of 2048 samples
-			buffer_count               = max(4, ceil(2048 / bufpref));
+			buffer_count               = (size_t)max(4, ceil(2048 / bufpref));
 			device_options.buffer_size = bufpref;
 			circlebuf_init(&audio_buffer);
 			circlebuf_reserve(&audio_buffer, buffer_count * sizeof(device_source_audio));
-			for (int i = 0; i < buffer_count; i++) {
-				circlebuf_push_back(&audio_buffer, &device_source_audio(), sizeof(device_source_audio));
-				// initialize # of buffers
-			}
+			device_source_audio temp = {0};
+			// initialize # of buffers
+			for (int i = 0; i < buffer_count; i++)
+				circlebuf_push_back(&audio_buffer, &temp, sizeof(device_source_audio));
 			circle_buffer_prepped = true;
 		}
 	}
@@ -454,7 +442,7 @@ public:
 			for (int i = 0; i < buffer_count; i++) {
 				device_source_audio* _source_audio = get_source_audio(i);
 				_source_audio->data                = (uint8_t**)bzalloc(input_chs * sizeof(uint8_t*));
-				for (int j = 0; j < input_chs; j++) {
+				for (int j = 0; j < (int)input_chs; j++) {
 					if (!buffer_prepped) {
 						_source_audio->data[j] = (uint8_t*)bzalloc(buffer_size);
 					} else if (reallocate_buffer) {
@@ -487,123 +475,9 @@ public:
 		return _listeners;
 	}
 
-	/* kept for compatibility with other modules but not used in this plugin version */
-	void write_buffer_interleaved(const void* buffer, DWORD BufSize, uint64_t timestamp_on_callback)
-	{
-		if (!all_prepped) {
-			blog(LOG_INFO, "%s device %i is not prepared", __FUNCTION__, device_index);
-			return;
-		}
-		int byte_depth = bytedepth_format(format);
-		if (!byte_depth)
-			return;
-		ResetEvent(all_recieved_signal);
-		SetEvent(all_recieved_signal_2);
-
-		uint8_t* input_buffer   = (uint8_t*)buffer;
-		size_t   ch_buffer_size = BufSize / device_options.channel_count; // info.inputs;
-		if (ch_buffer_size > buffer_size) {
-			blog(LOG_WARNING, "%s device needs to reallocate memory");
-			frames = ch_buffer_size / byte_depth;
-			re_prep_buffers();
-		}
-		size_t interleaved_frame_size = device_options.channel_count * byte_depth; // info.inputs
-		// calculate on the spot
-		size_t frames_count = BufSize / interleaved_frame_size;
-		// use cached value
-		// size_t frames_count = frames;
-
-		device_source_audio* _source_audio = get_writeable_source_audio();
-		if (!_source_audio) {
-			blog(LOG_INFO, "%s _source_audio = NULL", __FUNCTION__);
-			return;
-		}
-
-		audio_format planar_format = get_planar_format(format);
-		// deinterleave directly into buffer (planar)
-		for (size_t i = 0; i < frames_count; i++) {
-			for (size_t j = 0; j < device_options.channel_count; j++) {
-				memcpy(_source_audio->data[j] + (i * byte_depth),
-						input_buffer + (j * byte_depth) + (i * interleaved_frame_size),
-						byte_depth);
-			}
-		}
-		_source_audio->format          = planar_format;
-		_source_audio->frames          = frames_count;
-		_source_audio->input_chs       = device_options.channel_count;
-		_source_audio->samples_per_sec = samples_per_sec;
-		_source_audio->timestamp = _source_audio->timestamp = timestamp_on_callback -
-				((_source_audio->frames * NSEC_PER_SEC) / _source_audio->samples_per_sec);
-
-		write_index++;
-		write_index = write_index % buffer_count;
-		SetEvent(all_recieved_signal);
-		ResetEvent(all_recieved_signal_2);
-	}
-
-	void write_buffer_planar(const void* buffer, DWORD BufSize, uint64_t timestamp_on_callback)
-	{
-		if (!all_prepped) {
-			blog(LOG_INFO, "%s device %i is not prepared", __FUNCTION__, device_index);
-			return;
-		}
-		int byte_depth = bytedepth_format(format);
-		if (!byte_depth)
-			return;
-		ResetEvent(all_recieved_signal);
-		SetEvent(all_recieved_signal_2);
-
-		uint8_t** input_buffer   = (uint8_t**)buffer;
-		size_t    ch_buffer_size = BufSize / device_options.channel_count; // info.inputs;
-		if (ch_buffer_size > buffer_size) {
-			blog(LOG_WARNING, "%s device needs to reallocate memory %ui to %ui", __FUNCTION__, buffer_size,
-					2 * ch_buffer_size);
-			frames = ch_buffer_size / byte_depth;
-			re_prep_buffers();
-		}
-		size_t interleaved_frame_size = device_options.channel_count * byte_depth;
-		size_t frames_count           = BufSize / interleaved_frame_size;
-		// use cached value
-		// size_t frames_count = frames;
-
-		device_source_audio* _source_audio = get_writeable_source_audio();
-		if (!_source_audio) {
-			blog(LOG_INFO, "%s _source_audio = NULL", __FUNCTION__);
-			return;
-		}
-
-		audio_format planar_format = get_planar_format(format);
-		// deinterleave directly into buffer (planar)
-		if (input_buffer) {
-			for (size_t j = 0; j < device_options.channel_count; j++) {
-				if (!_source_audio->data[j])
-					blog(LOG_INFO, "PANIC %llu", j);
-				if (input_buffer[j])
-					memcpy(_source_audio->data[j], input_buffer[j], ch_buffer_size);
-				else
-					memset(_source_audio->data[j], 0, ch_buffer_size);
-			}
-		} else {
-			for (size_t j = 0; j < device_options.channel_count; j++) {
-				memset(_source_audio->data[j], 0, ch_buffer_size);
-			}
-		}
-
-		_source_audio->format          = planar_format;
-		_source_audio->frames          = frames_count;
-		_source_audio->input_chs       = device_options.channel_count;
-		_source_audio->samples_per_sec = samples_per_sec;
-		_source_audio->timestamp = _source_audio->timestamp = timestamp_on_callback -
-				((_source_audio->frames * NSEC_PER_SEC) / _source_audio->samples_per_sec);
-
-		write_index++;
-		write_index = write_index % buffer_count;
-		SetEvent(all_recieved_signal);
-		ResetEvent(all_recieved_signal_2);
-	}
-
 	void write_buffer_planar(const void* buffer, int channels, size_t samples, uint64_t timestamp_on_callback)
 	{
+		UNUSED_PARAMETER(channels);
 		if (!all_prepped) {
 			blog(LOG_INFO, "%s device %i is not prepared", __FUNCTION__, device_index);
 			return;
@@ -623,10 +497,9 @@ public:
 		if (ch_buffer_size > buffer_size) {
 			blog(LOG_WARNING, "%s device needs to reallocate memory %ui to %ui", __FUNCTION__, buffer_size,
 					2 * ch_buffer_size);
-			frames = ch_buffer_size / byte_depth;
+			frames = (uint32_t)(ch_buffer_size / byte_depth);
 			re_prep_buffers();
 		}
-		size_t interleaved_frame_size = device_options.channel_count * byte_depth;
 
 		audio_format planar_format = get_planar_format(format);
 		// deinterleave directly into buffer (planar)
@@ -646,7 +519,7 @@ public:
 		}
 
 		_source_audio->format          = planar_format;
-		_source_audio->frames          = samples;
+		_source_audio->frames          = (uint32_t)samples;
 		_source_audio->input_chs       = device_options.channel_count;
 		_source_audio->samples_per_sec = samples_per_sec;
 		_source_audio->timestamp = _source_audio->timestamp = timestamp_on_callback -
@@ -675,9 +548,7 @@ public:
 
 		size_t read_index = device->write_index;
 		int    waitResult;
-
-		uint64_t buffer_time = ((device->frames * NSEC_PER_SEC) / device->samples_per_sec);
-		long     route[MAX_AUDIO_CHANNELS];
+		long   route[MAX_AUDIO_CHANNELS];
 
 		while (device->isBufferActive) {
 			waitResult = WaitForMultipleObjects(2, signals_1, false, INFINITE);
@@ -750,9 +621,7 @@ public:
 		if (captureThread.Valid()) {
 			DWORD  waitResult;
 			HANDLE signals_1[2] = {all_recieved_signal, stop_listening_signal};
-			// HANDLE signals_2[2] = {all_recieved_signal_2, stop_listening_signal};
 			waitResult = WaitForMultipleObjects(2, signals_1, false, INFINITE);
-			// waitResult          = WaitForMultipleObjects(2, signals_2, false, INFINITE);
 		}
 	}
 	// adds a listener thread between an asio_listener object and this device
@@ -763,7 +632,7 @@ public:
 
 		for (size_t i = 0; i < _listeners.size(); i++) {
 			if (_listeners[i] == listener) {
-				blog(LOG_INFO, "(source_id: %x) already connected!", _listeners[i]->get_id());
+				blog(LOG_INFO, "(source_id: %x) already connected!", _listeners[i]->get_id().c_str());
 				return;
 			}
 		}
@@ -799,5 +668,3 @@ static void wait_for_buffer(device_buffer* buffer)
 	if (buffer)
 		buffer->wait();
 }
-
-std::vector<device_buffer*> device_list;
