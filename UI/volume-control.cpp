@@ -1,6 +1,7 @@
 #include "volume-control.hpp"
 #include "qt-wrappers.hpp"
 #include "obs-app.hpp"
+#include "window-basic-main.hpp"
 #include "mute-checkbox.hpp"
 #include "slider-ignorewheel.hpp"
 #include "slider-absoluteset-style.hpp"
@@ -64,6 +65,92 @@ void VolControl::VolumeMuted(bool muted)
 void VolControl::SetMuted(bool checked)
 {
 	obs_source_set_muted(source, checked);
+
+	if (mutePtr)
+		*mutePtr = checked;
+}
+
+void VolControl::SetMon(bool checked)
+{
+	obs_monitoring_type mt;
+	bool isOutput = stream->isChecked() || rec->isChecked();
+	if (!checked)
+		mt = OBS_MONITORING_TYPE_NONE;
+	else if (isOutput)
+		mt = OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT;
+	else
+		mt = OBS_MONITORING_TYPE_MONITOR_ONLY;
+
+	obs_source_set_monitoring_type(source, mt);
+	obs_source_set_track_active(source);
+}
+
+void VolControl::SetStream(bool checked)
+{
+	OBSBasic *main = reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
+	int index = checked ? track_index : 0;
+	config_set_int(main->Config(), "AdvOut", "TrackIndex", index + 1);
+	main->ResetOutputs();
+	config_save_safe(main->Config(), "tmp", nullptr);
+	for (auto vol : main->GetMasterVol()) {
+		if (vol->track_index != index)
+			vol->stream->setChecked(false);
+		else
+			vol->stream->setChecked(true);
+	}
+	/* The monitoring API unfortunately links it to output.
+	 * The next call is required to update the monitoring_type.
+	 * Remove it if API is reworked.
+	 * See also SetRec function. This is used for monitor hotkey.
+	 */
+	SetMon(mon->isChecked());
+}
+
+void VolControl::SetRec(bool checked)
+{
+	Q_UNUSED(checked);
+	OBSBasic *main = reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
+	std::string RecMode =
+		config_get_string(main->Config(), "AdvOut", "RecType");
+	bool isStandard = RecMode.compare("Standard") == 0;
+	int recbitmask;
+	if (isStandard)
+		recbitmask =
+			config_get_int(main->Config(), "AdvOut", "RecTracks");
+	else
+		recbitmask = config_get_int(main->Config(), "AdvOut",
+					    "FFAudioMixes");
+
+	int newbitmask = recbitmask ^ (1 << track_index);
+	if (!newbitmask) {
+		newbitmask = 1 << 0;
+		for (auto vol : main->GetMasterVol()) {
+			if (vol->track_index != 0)
+				vol->rec->setChecked(false);
+			else
+				vol->rec->setChecked(true);
+		}
+	}
+	if (isStandard)
+		config_set_int(main->Config(), "AdvOut", "RecTracks",
+			       newbitmask);
+	else
+		config_set_int(main->Config(), "AdvOut", "FFAudioMixes",
+			       newbitmask);
+
+	main->ResetOutputs();
+	config_save_safe(main->Config(), "tmp", nullptr);
+	SetMon(mon->isChecked());
+}
+
+void VolControl::enableStreamButton(bool show)
+{
+	stream->setEnabled(show);
+}
+
+void VolControl::enableRecButton(bool show)
+{
+	rec->setEnabled(show);
 }
 
 void VolControl::SliderChanged(int vol)
@@ -77,7 +164,6 @@ void VolControl::updateText()
 	QString db = QString::number(obs_fader_get_db(obs_fader), 'f', 1)
 			     .append(" dB");
 	volLabel->setText(db);
-
 	bool muted = obs_source_muted(source);
 	const char *accTextLookup = muted ? "VolControl.SliderMuted"
 					  : "VolControl.SliderUnmuted";
@@ -113,19 +199,49 @@ void VolControl::setPeakMeterType(enum obs_peak_meter_type peakMeterType)
 	volMeter->setPeakMeterType(peakMeterType);
 }
 
-VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
+VolControl::VolControl(OBSSource source_, bool *mutePtr, bool showConfig,
+		       bool vertical, int trackIndex)
 	: source(std::move(source_)),
 	  levelTotal(0.0f),
 	  levelCount(0.0f),
 	  obs_fader(obs_fader_create(OBS_FADER_LOG)),
 	  obs_volmeter(obs_volmeter_create(OBS_FADER_LOG)),
+	  mutePtr(mutePtr),
 	  vertical(vertical)
 {
 	nameLabel = new QLabel();
 	volLabel = new QLabel();
 	mute = new MuteCheckBox();
 
-	QString sourceName = obs_source_get_name(source);
+#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
+	mon = new MonCheckBox();
+#endif
+	track_index = trackIndex;
+	OBSBasic *main = reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
+	QString sourceName;
+
+	/* set the name of the meter */
+	if (trackIndex >= 0) {
+		stream = new StreamCheckBox();
+		rec = new RecCheckBox();
+
+		std::string trackNum =
+			"Track" + std::to_string(trackIndex + 1) + "Name";
+		const char *nameAdv = config_get_string(
+			main->Config(), "AdvOut", trackNum.c_str());
+		trackNum = "Track " + std::to_string(trackIndex + 1);
+		const char *name;
+		if (nameAdv) {
+			std::string nameStr = nameAdv;
+			name = nameStr.compare("") == 0 ? trackNum.c_str()
+							: nameAdv;
+		} else {
+			name = trackNum.c_str();
+		}
+		sourceName = QString::fromUtf8(name);
+	} else {
+		sourceName = obs_source_get_name(source);
+	}
 	setObjectName(sourceName);
 
 	if (showConfig) {
@@ -134,7 +250,7 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		config->setFlat(true);
 		config->setSizePolicy(QSizePolicy::Maximum,
 				      QSizePolicy::Maximum);
-		config->setMaximumSize(22, 22);
+		config->setMaximumSize(16, 16);
 		config->setAutoDefault(false);
 
 		config->setAccessibleName(
@@ -145,45 +261,61 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 	}
 
 	QVBoxLayout *mainLayout = new QVBoxLayout;
-	mainLayout->setContentsMargins(4, 4, 4, 4);
+	mainLayout->setContentsMargins(4, 2, 4, 2);
 	mainLayout->setSpacing(2);
 
 	if (vertical) {
 		QHBoxLayout *nameLayout = new QHBoxLayout;
-		QHBoxLayout *controlLayout = new QHBoxLayout;
 		QHBoxLayout *volLayout = new QHBoxLayout;
 		QHBoxLayout *meterLayout = new QHBoxLayout;
+		QHBoxLayout *controlLayout = new QHBoxLayout;
+		QVBoxLayout *rightLayout = new QVBoxLayout;
 
 		volMeter = new VolumeMeter(nullptr, obs_volmeter, true);
 		slider = new SliderIgnoreScroll(Qt::Vertical);
 
-		nameLayout->setAlignment(Qt::AlignCenter);
-		meterLayout->setAlignment(Qt::AlignCenter);
-		controlLayout->setAlignment(Qt::AlignCenter);
-		volLayout->setAlignment(Qt::AlignCenter);
+		nameLayout->setAlignment(Qt::AlignLeft);
+		volLayout->setAlignment(Qt::AlignLeft);
+		meterLayout->setAlignment(Qt::AlignLeft);
+		controlLayout->setAlignment(Qt::AlignLeft);
 
 		nameLayout->setContentsMargins(0, 0, 0, 0);
 		nameLayout->setSpacing(0);
 		nameLayout->addWidget(nameLabel);
 
-		controlLayout->setContentsMargins(0, 0, 0, 0);
-		controlLayout->setSpacing(0);
-
-		if (showConfig)
-			controlLayout->addWidget(config);
-
-		controlLayout->addItem(new QSpacerItem(3, 0));
-		// Add Headphone (audio monitoring) widget here
-		controlLayout->addWidget(mute);
-
-		meterLayout->setContentsMargins(0, 0, 0, 0);
-		meterLayout->setSpacing(0);
-		meterLayout->addWidget(volMeter);
-		meterLayout->addWidget(slider);
-
 		volLayout->setContentsMargins(0, 0, 0, 0);
 		volLayout->setSpacing(0);
 		volLayout->addWidget(volLabel);
+
+		rightLayout->setAlignment(Qt::AlignTop);
+		rightLayout->setContentsMargins(0, 0, 0, 0);
+#ifndef __APPLE__
+		rightLayout->setSpacing(5);
+#else
+		rightLayout->setSpacing(12);
+#endif
+
+		if (trackIndex >= 0) {
+#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
+			rightLayout->addWidget(mon);
+#endif
+			rightLayout->addWidget(stream);
+			rightLayout->addWidget(rec);
+		}
+
+		meterLayout->setContentsMargins(0, 0, 0, 0);
+		meterLayout->setSpacing(0);
+		meterLayout->addSpacing(4);
+		meterLayout->addWidget(volMeter);
+		meterLayout->addWidget(slider);
+		meterLayout->addLayout(rightLayout);
+
+		controlLayout->setContentsMargins(0, 0, 0, 0);
+		controlLayout->setSpacing(0);
+		if (showConfig)
+			controlLayout->addWidget(config);
+		controlLayout->addSpacing(15);
+		controlLayout->addWidget(mute);
 
 		mainLayout->addItem(nameLayout);
 		mainLayout->addItem(volLayout);
@@ -192,6 +324,14 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 
 		volMeter->setFocusProxy(slider);
 
+#ifdef __APPLE__ //thanks to SuslikV for pointing this
+		mon->setProperty("themeID", "MacOnly");
+		mute->setProperty("themeID", "MacOnly");
+		if (trackIndex >= 0) {
+			stream->setProperty("themeID", "MacOnly");
+			rec->setProperty("themeID", "MacOnly");
+		}
+#endif
 		setMaximumWidth(110);
 	} else {
 		QHBoxLayout *volLayout = new QHBoxLayout;
@@ -202,597 +342,659 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		slider = new SliderIgnoreScroll(Qt::Horizontal);
 
 		textLayout->setContentsMargins(0, 0, 0, 0);
-		textLayout->addWidget(nameLabel);
-		textLayout->addWidget(volLabel);
-		textLayout->setAlignment(nameLabel, Qt::AlignLeft);
-		textLayout->setAlignment(volLabel, Qt::AlignRight);
+		textLayout->setSpacing(0);
+		if (trackIndex >= 0) {
+#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
+			textLayout->addWidget(mon);
+#endif
+#ifdef __APPLE__
+			textLayout->addItem(new QSpacerItem(13, 0));
+			;
+#endif
+			if (trackIndex >= 0) {
+				textLayout->addWidget(stream);
+#ifdef __APPLE__
+				textLayout->addItem(new QSpacerItem(15, 0));
+#endif
+				textLayout->addWidget(rec);
+#ifdef __APPLE__
+				textLayout->addItem(new QSpacerItem(15, 0));
+#else
+				textLayout->addItem(new QSpacerItem(5, 0));
+#endif
+			}
+			textLayout->addWidget(nameLabel);
+			textLayout->addStretch();
+			textLayout->addWidget(volLabel);
+			textLayout->setAlignment(nameLabel, Qt::AlignLeft);
+			textLayout->setAlignment(volLabel, Qt::AlignRight);
 
-		volLayout->addWidget(slider);
-		volLayout->addWidget(mute);
-		volLayout->setSpacing(5);
+			volLayout->addWidget(slider);
+			volLayout->addWidget(mute);
+			volLayout->setSpacing(5);
 
-		botLayout->setContentsMargins(0, 0, 0, 0);
-		botLayout->setSpacing(0);
-		botLayout->addLayout(volLayout);
+			botLayout->setContentsMargins(0, 0, 0, 0);
+			botLayout->setSpacing(0);
+			botLayout->addLayout(volLayout);
 
-		if (showConfig)
-			botLayout->addWidget(config);
+			if (showConfig)
+				botLayout->addWidget(config);
 
-		mainLayout->addItem(textLayout);
-		mainLayout->addWidget(volMeter);
-		mainLayout->addItem(botLayout);
+			mainLayout->addItem(textLayout);
+			mainLayout->addWidget(volMeter);
+			mainLayout->addItem(botLayout);
 
-		volMeter->setFocusProxy(slider);
+			volMeter->setFocusProxy(slider);
+		}
+
+		setLayout(mainLayout);
+
+		QFont font = nameLabel->font();
+		font.setPointSize(font.pointSize() - 1);
+
+		nameLabel->setText(sourceName);
+		nameLabel->setFont(font);
+		volLabel->setFont(font);
+
+		slider->setMinimum(0);
+		slider->setMaximum(int(FADER_PRECISION));
+
+		/* mute button */
+		bool muted = obs_source_muted(source);
+		mute->setChecked(muted);
+		SetMuted(muted);
+		mute->setAccessibleName(
+			QTStr("VolControl.Mute").arg(sourceName));
+		obs_fader_add_callback(obs_fader, OBSVolumeChanged, this);
+		obs_volmeter_add_callback(obs_volmeter, OBSVolumeLevel, this);
+
+		if (source != nullptr)
+			signal_handler_connect(
+				obs_source_get_signal_handler(source), "mute",
+				OBSVolumeMuted, this);
+
+		QWidget::connect(slider, SIGNAL(valueChanged(int)), this,
+				 SLOT(SliderChanged(int)));
+		QWidget::connect(mute, SIGNAL(clicked(bool)), this,
+				 SLOT(SetMuted(bool)));
+		/* monitoring button */
+#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
+		if (trackIndex >= 0) {
+			bool monON = false;
+			enum obs_monitoring_type type = (obs_monitoring_type)
+				obs_source_get_monitoring_type(source);
+			if (type != OBS_MONITORING_TYPE_NONE)
+				monON = true;
+			mon->setChecked(monON);
+			SetMon(monON);
+			mon->setAccessibleName(QTStr("VolControl.Mon"));
+			mon->setToolTip(QTStr("VolControl.Mon.Tooltip"));
+
+			QWidget::connect(mon, SIGNAL(clicked(bool)), this,
+					 SLOT(SetMon(bool)));
+#endif
+
+			bool onAir = false;
+			int stream_index = config_get_int(
+				main->Config(), "AdvOut", "TrackIndex");
+			if (track_index == stream_index - 1)
+				onAir = true;
+			stream->setChecked(onAir);
+			stream->setAccessibleName(QTStr("VolControl.Stream"));
+			stream->setToolTip(QTStr("VolControl.Stream.Tooltip")
+						   .arg(track_index + 1));
+			QWidget::connect(stream, SIGNAL(clicked(bool)), this,
+					 SLOT(SetStream(bool)));
+
+			bool onRec = false;
+			std::string RecMode = config_get_string(
+				main->Config(), "AdvOut", "RecType");
+			bool isStandard = RecMode.compare("Standard") == 0;
+			if (isStandard) {
+				int recbitmask = config_get_int(
+					main->Config(), "AdvOut", "RecTracks");
+				if (recbitmask & 1 << track_index)
+					onRec = true;
+			} else {
+				int FFbitmask = config_get_int(main->Config(),
+							       "AdvOut",
+							       "FFAudioMixes");
+				if (FFbitmask & 1 << track_index)
+					onRec = true;
+			}
+			rec->setChecked(onRec);
+			rec->setAccessibleName(
+				QTStr("VolControl.Rec").arg(sourceName));
+			rec->setToolTip(QTStr("VolControl.Rec.Tooltip")
+						.arg(track_index + 1));
+
+			QWidget::connect(rec, SIGNAL(clicked(bool)), this,
+					 SLOT(SetRec(bool)));
+		}
+		obs_fader_attach_source(obs_fader, source);
+		obs_volmeter_attach_source(obs_volmeter, source);
+
+		QString styleName = slider->style()->objectName();
+		QStyle *style;
+		style = QStyleFactory::create(styleName);
+		if (!style) {
+			style = new SliderAbsoluteSetStyle();
+		} else {
+			style = new SliderAbsoluteSetStyle(style);
+		}
+
+		style->setParent(slider);
+		slider->setStyle(style);
+
+		/* Call volume changed once to init the slider position and label */
+		VolumeChanged();
 	}
 
-	setLayout(mainLayout);
-
-	QFont font = nameLabel->font();
-	font.setPointSize(font.pointSize() - 1);
-
-	nameLabel->setText(sourceName);
-	nameLabel->setFont(font);
-	volLabel->setFont(font);
-
-	slider->setMinimum(0);
-	slider->setMaximum(int(FADER_PRECISION));
-
-	bool muted = obs_source_muted(source);
-	mute->setChecked(muted);
-	mute->setAccessibleName(QTStr("VolControl.Mute").arg(sourceName));
-	obs_fader_add_callback(obs_fader, OBSVolumeChanged, this);
-	obs_volmeter_add_callback(obs_volmeter, OBSVolumeLevel, this);
-
-	signal_handler_connect(obs_source_get_signal_handler(source), "mute",
-			       OBSVolumeMuted, this);
-
-	QWidget::connect(slider, SIGNAL(valueChanged(int)), this,
-			 SLOT(SliderChanged(int)));
-	QWidget::connect(mute, SIGNAL(clicked(bool)), this,
-			 SLOT(SetMuted(bool)));
-
-	obs_fader_attach_source(obs_fader, source);
-	obs_volmeter_attach_source(obs_volmeter, source);
-
-	QString styleName = slider->style()->objectName();
-	QStyle *style;
-	style = QStyleFactory::create(styleName);
-	if (!style) {
-		style = new SliderAbsoluteSetStyle();
-	} else {
-		style = new SliderAbsoluteSetStyle(style);
+	VolControl::~VolControl()
+	{
+		obs_fader_remove_callback(obs_fader, OBSVolumeChanged, this);
+		obs_volmeter_remove_callback(obs_volmeter, OBSVolumeLevel,
+					     this);
+		if (source != nullptr) {
+			signal_handler_disconnect(
+				obs_source_get_signal_handler(source), "mute",
+				OBSVolumeMuted, this);
+			signal_handler_disconnect(
+				obs_source_get_signal_handler(source),
+				"audio_mixers", OBSSourceMixersChanged, this);
+			signal_handler_disconnect(
+				obs_source_get_signal_handler(source),
+				"monitoring_type", OBSSourceMonitoringChanged,
+				this);
+		}
+		obs_fader_destroy(obs_fader);
+		obs_volmeter_destroy(obs_volmeter);
 	}
 
-	style->setParent(slider);
-	slider->setStyle(style);
-
-	/* Call volume changed once to init the slider position and label */
-	VolumeChanged();
-}
-
-VolControl::~VolControl()
-{
-	obs_fader_remove_callback(obs_fader, OBSVolumeChanged, this);
-	obs_volmeter_remove_callback(obs_volmeter, OBSVolumeLevel, this);
-
-	signal_handler_disconnect(obs_source_get_signal_handler(source), "mute",
-				  OBSVolumeMuted, this);
-
-	obs_fader_destroy(obs_fader);
-	obs_volmeter_destroy(obs_volmeter);
-}
-
-QColor VolumeMeter::getBackgroundNominalColor() const
-{
-	return backgroundNominalColor;
-}
-
-void VolumeMeter::setBackgroundNominalColor(QColor c)
-{
-	backgroundNominalColor = std::move(c);
-}
-
-QColor VolumeMeter::getBackgroundWarningColor() const
-{
-	return backgroundWarningColor;
-}
-
-void VolumeMeter::setBackgroundWarningColor(QColor c)
-{
-	backgroundWarningColor = std::move(c);
-}
-
-QColor VolumeMeter::getBackgroundErrorColor() const
-{
-	return backgroundErrorColor;
-}
-
-void VolumeMeter::setBackgroundErrorColor(QColor c)
-{
-	backgroundErrorColor = std::move(c);
-}
-
-QColor VolumeMeter::getForegroundNominalColor() const
-{
-	return foregroundNominalColor;
-}
-
-void VolumeMeter::setForegroundNominalColor(QColor c)
-{
-	foregroundNominalColor = std::move(c);
-}
-
-QColor VolumeMeter::getForegroundWarningColor() const
-{
-	return foregroundWarningColor;
-}
-
-void VolumeMeter::setForegroundWarningColor(QColor c)
-{
-	foregroundWarningColor = std::move(c);
-}
-
-QColor VolumeMeter::getForegroundErrorColor() const
-{
-	return foregroundErrorColor;
-}
-
-void VolumeMeter::setForegroundErrorColor(QColor c)
-{
-	foregroundErrorColor = std::move(c);
-}
-
-QColor VolumeMeter::getClipColor() const
-{
-	return clipColor;
-}
-
-void VolumeMeter::setClipColor(QColor c)
-{
-	clipColor = std::move(c);
-}
-
-QColor VolumeMeter::getMagnitudeColor() const
-{
-	return magnitudeColor;
-}
-
-void VolumeMeter::setMagnitudeColor(QColor c)
-{
-	magnitudeColor = std::move(c);
-}
-
-QColor VolumeMeter::getMajorTickColor() const
-{
-	return majorTickColor;
-}
-
-void VolumeMeter::setMajorTickColor(QColor c)
-{
-	majorTickColor = std::move(c);
-}
-
-QColor VolumeMeter::getMinorTickColor() const
-{
-	return minorTickColor;
-}
-
-void VolumeMeter::setMinorTickColor(QColor c)
-{
-	minorTickColor = std::move(c);
-}
-
-qreal VolumeMeter::getMinimumLevel() const
-{
-	return minimumLevel;
-}
-
-void VolumeMeter::setMinimumLevel(qreal v)
-{
-	minimumLevel = v;
-}
-
-qreal VolumeMeter::getWarningLevel() const
-{
-	return warningLevel;
-}
-
-void VolumeMeter::setWarningLevel(qreal v)
-{
-	warningLevel = v;
-}
-
-qreal VolumeMeter::getErrorLevel() const
-{
-	return errorLevel;
-}
-
-void VolumeMeter::setErrorLevel(qreal v)
-{
-	errorLevel = v;
-}
-
-qreal VolumeMeter::getClipLevel() const
-{
-	return clipLevel;
-}
-
-void VolumeMeter::setClipLevel(qreal v)
-{
-	clipLevel = v;
-}
-
-qreal VolumeMeter::getMinimumInputLevel() const
-{
-	return minimumInputLevel;
-}
-
-void VolumeMeter::setMinimumInputLevel(qreal v)
-{
-	minimumInputLevel = v;
-}
-
-qreal VolumeMeter::getPeakDecayRate() const
-{
-	return peakDecayRate;
-}
-
-void VolumeMeter::setPeakDecayRate(qreal v)
-{
-	peakDecayRate = v;
-}
-
-qreal VolumeMeter::getMagnitudeIntegrationTime() const
-{
-	return magnitudeIntegrationTime;
-}
-
-void VolumeMeter::setMagnitudeIntegrationTime(qreal v)
-{
-	magnitudeIntegrationTime = v;
-}
-
-qreal VolumeMeter::getPeakHoldDuration() const
-{
-	return peakHoldDuration;
-}
-
-void VolumeMeter::setPeakHoldDuration(qreal v)
-{
-	peakHoldDuration = v;
-}
-
-qreal VolumeMeter::getInputPeakHoldDuration() const
-{
-	return inputPeakHoldDuration;
-}
-
-void VolumeMeter::setInputPeakHoldDuration(qreal v)
-{
-	inputPeakHoldDuration = v;
-}
-
-void VolumeMeter::setPeakMeterType(enum obs_peak_meter_type peakMeterType)
-{
-	obs_volmeter_set_peak_meter_type(obs_volmeter, peakMeterType);
-	switch (peakMeterType) {
-	case TRUE_PEAK_METER:
-		// For true-peak meters EBU has defined the Permitted Maximum,
-		// taking into account the accuracy of the meter and further
-		// processing required by lossy audio compression.
-		//
-		// The alignment level was not specified, but I've adjusted
-		// it compared to a sample-peak meter. Incidently Youtube
-		// uses this new Alignment Level as the maximum integrated
-		// loudness of a video.
-		//
-		//  * Permitted Maximum Level (PML) = -2.0 dBTP
-		//  * Alignment Level (AL) = -13 dBTP
-		setErrorLevel(-2.0);
-		setWarningLevel(-13.0);
-		break;
-
-	case SAMPLE_PEAK_METER:
-	default:
-		// For a sample Peak Meter EBU has the following level
-		// definitions, taking into account inaccuracies of this meter:
-		//
-		//  * Permitted Maximum Level (PML) = -9.0 dBFS
-		//  * Alignment Level (AL) = -20.0 dBFS
-		setErrorLevel(-9.0);
-		setWarningLevel(-20.0);
-		break;
-	}
-}
-
-void VolumeMeter::mousePressEvent(QMouseEvent *event)
-{
-	setFocus(Qt::MouseFocusReason);
-}
-
-void VolumeMeter::wheelEvent(QWheelEvent *event)
-{
-	QApplication::sendEvent(focusProxy(), event);
-}
-
-VolumeMeter::VolumeMeter(QWidget *parent, obs_volmeter_t *obs_volmeter,
-			 bool vertical)
-	: QWidget(parent), obs_volmeter(obs_volmeter), vertical(vertical)
-{
-	// Use a font that can be rendered small.
-	tickFont = QFont("Arial");
-	tickFont.setPixelSize(7);
-	// Default meter color settings, they only show if
-	// there is no stylesheet, do not remove.
-	backgroundNominalColor.setRgb(0x26, 0x7f, 0x26); // Dark green
-	backgroundWarningColor.setRgb(0x7f, 0x7f, 0x26); // Dark yellow
-	backgroundErrorColor.setRgb(0x7f, 0x26, 0x26);   // Dark red
-	foregroundNominalColor.setRgb(0x4c, 0xff, 0x4c); // Bright green
-	foregroundWarningColor.setRgb(0xff, 0xff, 0x4c); // Bright yellow
-	foregroundErrorColor.setRgb(0xff, 0x4c, 0x4c);   // Bright red
-	clipColor.setRgb(0xff, 0xff, 0xff);              // Bright white
-	magnitudeColor.setRgb(0x00, 0x00, 0x00);         // Black
-	majorTickColor.setRgb(0xff, 0xff, 0xff);         // Black
-	minorTickColor.setRgb(0xcc, 0xcc, 0xcc);         // Black
-	minimumLevel = -60.0;                            // -60 dB
-	warningLevel = -20.0;                            // -20 dB
-	errorLevel = -9.0;                               //  -9 dB
-	clipLevel = -0.5;                                //  -0.5 dB
-	minimumInputLevel = -50.0;                       // -50 dB
-	peakDecayRate = 11.76;                           //  20 dB / 1.7 sec
-	magnitudeIntegrationTime = 0.3;                  //  99% in 300 ms
-	peakHoldDuration = 20.0;                         //  20 seconds
-	inputPeakHoldDuration = 1.0;                     //  1 second
-
-	channels = (int)audio_output_get_channels(obs_get_audio());
-
-	handleChannelCofigurationChange();
-	updateTimerRef = updateTimer.toStrongRef();
-	if (!updateTimerRef) {
-		updateTimerRef = QSharedPointer<VolumeMeterTimer>::create();
-		updateTimerRef->start(34);
-		updateTimer = updateTimerRef;
+	QColor VolumeMeter::getBackgroundNominalColor() const
+	{
+		return backgroundNominalColor;
 	}
 
-	updateTimerRef->AddVolControl(this);
-}
-
-VolumeMeter::~VolumeMeter()
-{
-	updateTimerRef->RemoveVolControl(this);
-	delete tickPaintCache;
-}
-
-void VolumeMeter::setLevels(const float magnitude[MAX_AUDIO_CHANNELS],
-			    const float peak[MAX_AUDIO_CHANNELS],
-			    const float inputPeak[MAX_AUDIO_CHANNELS])
-{
-	uint64_t ts = os_gettime_ns();
-	QMutexLocker locker(&dataMutex);
-
-	currentLastUpdateTime = ts;
-	for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS; channelNr++) {
-		currentMagnitude[channelNr] = magnitude[channelNr];
-		currentPeak[channelNr] = peak[channelNr];
-		currentInputPeak[channelNr] = inputPeak[channelNr];
+	void VolumeMeter::setBackgroundNominalColor(QColor c)
+	{
+		backgroundNominalColor = std::move(c);
 	}
 
-	// In case there are more updates then redraws we must make sure
-	// that the ballistics of peak and hold are recalculated.
-	locker.unlock();
-	calculateBallistics(ts);
-}
-
-inline void VolumeMeter::resetLevels()
-{
-	currentLastUpdateTime = 0;
-	for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS; channelNr++) {
-		currentMagnitude[channelNr] = -M_INFINITE;
-		currentPeak[channelNr] = -M_INFINITE;
-		currentInputPeak[channelNr] = -M_INFINITE;
-
-		displayMagnitude[channelNr] = -M_INFINITE;
-		displayPeak[channelNr] = -M_INFINITE;
-		displayPeakHold[channelNr] = -M_INFINITE;
-		displayPeakHoldLastUpdateTime[channelNr] = 0;
-		displayInputPeakHold[channelNr] = -M_INFINITE;
-		displayInputPeakHoldLastUpdateTime[channelNr] = 0;
-	}
-}
-
-inline void VolumeMeter::handleChannelCofigurationChange()
-{
-	QMutexLocker locker(&dataMutex);
-
-	int currentNrAudioChannels = obs_volmeter_get_nr_channels(obs_volmeter);
-	if (displayNrAudioChannels != currentNrAudioChannels) {
-		displayNrAudioChannels = currentNrAudioChannels;
-
-		// Make room for 3 pixels meter, with one pixel between each.
-		// Then 9/13 pixels for ticks and numbers.
-		if (vertical)
-			setMinimumSize(displayNrAudioChannels * 4 + 14, 130);
-		else
-			setMinimumSize(130, displayNrAudioChannels * 4 + 8);
-
-		resetLevels();
-	}
-}
-
-inline bool VolumeMeter::detectIdle(uint64_t ts)
-{
-	double timeSinceLastUpdate = (ts - currentLastUpdateTime) * 0.000000001;
-	if (timeSinceLastUpdate > 0.5) {
-		resetLevels();
-		return true;
-	} else {
-		return false;
-	}
-}
-
-inline void
-VolumeMeter::calculateBallisticsForChannel(int channelNr, uint64_t ts,
-					   qreal timeSinceLastRedraw)
-{
-	if (currentPeak[channelNr] >= displayPeak[channelNr] ||
-	    isnan(displayPeak[channelNr])) {
-		// Attack of peak is immediate.
-		displayPeak[channelNr] = currentPeak[channelNr];
-	} else {
-		// Decay of peak is 40 dB / 1.7 seconds for Fast Profile
-		// 20 dB / 1.7 seconds for Medium Profile (Type I PPM)
-		// 24 dB / 2.8 seconds for Slow Profile (Type II PPM)
-		float decay = float(peakDecayRate * timeSinceLastRedraw);
-		displayPeak[channelNr] = CLAMP(displayPeak[channelNr] - decay,
-					       currentPeak[channelNr], 0);
+	QColor VolumeMeter::getBackgroundWarningColor() const
+	{
+		return backgroundWarningColor;
 	}
 
-	if (currentPeak[channelNr] >= displayPeakHold[channelNr] ||
-	    !isfinite(displayPeakHold[channelNr])) {
-		// Attack of peak-hold is immediate, but keep track
-		// when it was last updated.
-		displayPeakHold[channelNr] = currentPeak[channelNr];
-		displayPeakHoldLastUpdateTime[channelNr] = ts;
-	} else {
-		// The peak and hold falls back to peak
-		// after 20 seconds.
-		qreal timeSinceLastPeak =
-			(uint64_t)(ts -
-				   displayPeakHoldLastUpdateTime[channelNr]) *
-			0.000000001;
-		if (timeSinceLastPeak > peakHoldDuration) {
-			displayPeakHold[channelNr] = currentPeak[channelNr];
-			displayPeakHoldLastUpdateTime[channelNr] = ts;
+	void VolumeMeter::setBackgroundWarningColor(QColor c)
+	{
+		backgroundWarningColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getBackgroundErrorColor() const
+	{
+		return backgroundErrorColor;
+	}
+
+	void VolumeMeter::setBackgroundErrorColor(QColor c)
+	{
+		backgroundErrorColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getForegroundNominalColor() const
+	{
+		return foregroundNominalColor;
+	}
+
+	void VolumeMeter::setForegroundNominalColor(QColor c)
+	{
+		foregroundNominalColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getForegroundWarningColor() const
+	{
+		return foregroundWarningColor;
+	}
+
+	void VolumeMeter::setForegroundWarningColor(QColor c)
+	{
+		foregroundWarningColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getForegroundErrorColor() const
+	{
+		return foregroundErrorColor;
+	}
+
+	void VolumeMeter::setForegroundErrorColor(QColor c)
+	{
+		foregroundErrorColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getClipColor() const { return clipColor; }
+
+	void VolumeMeter::setClipColor(QColor c) { clipColor = std::move(c); }
+
+	QColor VolumeMeter::getMagnitudeColor() const { return magnitudeColor; }
+
+	void VolumeMeter::setMagnitudeColor(QColor c)
+	{
+		magnitudeColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getMajorTickColor() const { return majorTickColor; }
+
+	void VolumeMeter::setMajorTickColor(QColor c)
+	{
+		majorTickColor = std::move(c);
+	}
+
+	QColor VolumeMeter::getMinorTickColor() const { return minorTickColor; }
+
+	void VolumeMeter::setMinorTickColor(QColor c)
+	{
+		minorTickColor = std::move(c);
+	}
+
+	qreal VolumeMeter::getMinimumLevel() const { return minimumLevel; }
+
+	void VolumeMeter::setMinimumLevel(qreal v) { minimumLevel = v; }
+
+	qreal VolumeMeter::getWarningLevel() const { return warningLevel; }
+
+	void VolumeMeter::setWarningLevel(qreal v) { warningLevel = v; }
+
+	qreal VolumeMeter::getErrorLevel() const { return errorLevel; }
+
+	void VolumeMeter::setErrorLevel(qreal v) { errorLevel = v; }
+
+	qreal VolumeMeter::getClipLevel() const { return clipLevel; }
+
+	void VolumeMeter::setClipLevel(qreal v) { clipLevel = v; }
+
+	qreal VolumeMeter::getMinimumInputLevel() const
+	{
+		return minimumInputLevel;
+	}
+
+	void VolumeMeter::setMinimumInputLevel(qreal v)
+	{
+		minimumInputLevel = v;
+	}
+
+	qreal VolumeMeter::getPeakDecayRate() const { return peakDecayRate; }
+
+	void VolumeMeter::setPeakDecayRate(qreal v) { peakDecayRate = v; }
+
+	qreal VolumeMeter::getMagnitudeIntegrationTime() const
+	{
+		return magnitudeIntegrationTime;
+	}
+
+	void VolumeMeter::setMagnitudeIntegrationTime(qreal v)
+	{
+		magnitudeIntegrationTime = v;
+	}
+
+	qreal VolumeMeter::getPeakHoldDuration() const
+	{
+		return peakHoldDuration;
+	}
+
+	void VolumeMeter::setPeakHoldDuration(qreal v) { peakHoldDuration = v; }
+
+	qreal VolumeMeter::getInputPeakHoldDuration() const
+	{
+		return inputPeakHoldDuration;
+	}
+
+	void VolumeMeter::setInputPeakHoldDuration(qreal v)
+	{
+		inputPeakHoldDuration = v;
+	}
+
+	void VolumeMeter::setPeakMeterType(
+		enum obs_peak_meter_type peakMeterType)
+	{
+		obs_volmeter_set_peak_meter_type(obs_volmeter, peakMeterType);
+		switch (peakMeterType) {
+		case TRUE_PEAK_METER:
+			// For true-peak meters EBU has defined the Permitted Maximum,
+			// taking into account the accuracy of the meter and further
+			// processing required by lossy audio compression.
+			//
+			// The alignment level was not specified, but I've adjusted
+			// it compared to a sample-peak meter. Incidently Youtube
+			// uses this new Alignment Level as the maximum integrated
+			// loudness of a video.
+			//
+			//  * Permitted Maximum Level (PML) = -2.0 dBTP
+			//  * Alignment Level (AL) = -13 dBTP
+			setErrorLevel(-2.0);
+			setWarningLevel(-13.0);
+			break;
+
+		case SAMPLE_PEAK_METER:
+		default:
+			// For a sample Peak Meter EBU has the following level
+			// definitions, taking into account inaccuracies of this meter:
+			//
+			//  * Permitted Maximum Level (PML) = -9.0 dBFS
+			//  * Alignment Level (AL) = -20.0 dBFS
+			setErrorLevel(-9.0);
+			setWarningLevel(-20.0);
+			break;
 		}
 	}
 
-	if (currentInputPeak[channelNr] >= displayInputPeakHold[channelNr] ||
-	    !isfinite(displayInputPeakHold[channelNr])) {
-		// Attack of peak-hold is immediate, but keep track
-		// when it was last updated.
-		displayInputPeakHold[channelNr] = currentInputPeak[channelNr];
-		displayInputPeakHoldLastUpdateTime[channelNr] = ts;
-	} else {
-		// The peak and hold falls back to peak after 1 second.
-		qreal timeSinceLastPeak =
-			(uint64_t)(
-				ts -
-				displayInputPeakHoldLastUpdateTime[channelNr]) *
-			0.000000001;
-		if (timeSinceLastPeak > inputPeakHoldDuration) {
+	void VolumeMeter::mousePressEvent(QMouseEvent * event)
+	{
+		setFocus(Qt::MouseFocusReason);
+	}
+
+	void VolumeMeter::wheelEvent(QWheelEvent * event)
+	{
+		QApplication::sendEvent(focusProxy(), event);
+	}
+
+	VolumeMeter::VolumeMeter(QWidget * parent,
+				 obs_volmeter_t * obs_volmeter, bool vertical)
+		: QWidget(parent),
+		  obs_volmeter(obs_volmeter),
+		  vertical(vertical)
+	{
+		// Use a font that can be rendered small.
+		tickFont = QFont("Arial");
+		tickFont.setPixelSize(7);
+		// Default meter color settings, they only show if
+		// there is no stylesheet, do not remove.
+		backgroundNominalColor.setRgb(0x26, 0x7f, 0x26); // Dark green
+		backgroundWarningColor.setRgb(0x7f, 0x7f, 0x26); // Dark yellow
+		backgroundErrorColor.setRgb(0x7f, 0x26, 0x26);   // Dark red
+		foregroundNominalColor.setRgb(0x4c, 0xff, 0x4c); // Bright green
+		foregroundWarningColor.setRgb(0xff, 0xff,
+					      0x4c);           // Bright yellow
+		foregroundErrorColor.setRgb(0xff, 0x4c, 0x4c); // Bright red
+		clipColor.setRgb(0xff, 0xff, 0xff);            // Bright white
+		magnitudeColor.setRgb(0x00, 0x00, 0x00);       // Black
+		majorTickColor.setRgb(0xff, 0xff, 0xff);       // Black
+		minorTickColor.setRgb(0xcc, 0xcc, 0xcc);       // Black
+		minimumLevel = -60.0;                          // -60 dB
+		warningLevel = -20.0;                          // -20 dB
+		errorLevel = -9.0;                             //  -9 dB
+		clipLevel = -0.5;                              //  -0.5 dB
+		minimumInputLevel = -50.0;                     // -50 dB
+		peakDecayRate = 11.76;          //  20 dB / 1.7 sec
+		magnitudeIntegrationTime = 0.3; //  99% in 300 ms
+		peakHoldDuration = 20.0;        //  20 seconds
+		inputPeakHoldDuration = 1.0;    //  1 second
+
+		channels = (int)audio_output_get_channels(obs_get_audio());
+
+		handleChannelCofigurationChange();
+		updateTimerRef = updateTimer.toStrongRef();
+		if (!updateTimerRef) {
+			updateTimerRef =
+				QSharedPointer<VolumeMeterTimer>::create();
+			updateTimerRef->start(34);
+			updateTimer = updateTimerRef;
+		}
+		if (vertical)
+			setMinimumHeight(50);
+		updateTimerRef->AddVolControl(this);
+	}
+
+	VolumeMeter::~VolumeMeter()
+	{
+		updateTimerRef->RemoveVolControl(this);
+		delete tickPaintCache;
+	}
+
+	void VolumeMeter::setLevels(const float magnitude[MAX_AUDIO_CHANNELS],
+				    const float peak[MAX_AUDIO_CHANNELS],
+				    const float inputPeak[MAX_AUDIO_CHANNELS])
+	{
+		uint64_t ts = os_gettime_ns();
+		QMutexLocker locker(&dataMutex);
+
+		currentLastUpdateTime = ts;
+		for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS;
+		     channelNr++) {
+			currentMagnitude[channelNr] = magnitude[channelNr];
+			currentPeak[channelNr] = peak[channelNr];
+			currentInputPeak[channelNr] = inputPeak[channelNr];
+		}
+
+		// In case there are more updates then redraws we must make sure
+		// that the ballistics of peak and hold are recalculated.
+		locker.unlock();
+		calculateBallistics(ts);
+	}
+
+	inline void VolumeMeter::resetLevels()
+	{
+		currentLastUpdateTime = 0;
+		for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS;
+		     channelNr++) {
+			currentMagnitude[channelNr] = -M_INFINITE;
+			currentPeak[channelNr] = -M_INFINITE;
+			currentInputPeak[channelNr] = -M_INFINITE;
+
+			displayMagnitude[channelNr] = -M_INFINITE;
+			displayPeak[channelNr] = -M_INFINITE;
+			displayPeakHold[channelNr] = -M_INFINITE;
+			displayPeakHoldLastUpdateTime[channelNr] = 0;
+			displayInputPeakHold[channelNr] = -M_INFINITE;
+			displayInputPeakHoldLastUpdateTime[channelNr] = 0;
+		}
+	}
+
+	inline void VolumeMeter::handleChannelCofigurationChange()
+	{
+		QMutexLocker locker(&dataMutex);
+
+		int currentNrAudioChannels =
+			obs_volmeter_get_nr_channels(obs_volmeter);
+		if (displayNrAudioChannels != currentNrAudioChannels) {
+			displayNrAudioChannels = currentNrAudioChannels;
+
+			// Make room for 3 pixels meter, with one pixel between each.
+			// Then 9/13 pixels for ticks and numbers.
+			if (vertical)
+				setMinimumSize(displayNrAudioChannels * 4 + 14,
+					       130);
+			else
+				setMinimumSize(130,
+					       displayNrAudioChannels * 4 + 8);
+
+			resetLevels();
+		}
+	}
+
+	inline bool VolumeMeter::detectIdle(uint64_t ts)
+	{
+		double timeSinceLastUpdate =
+			(ts - currentLastUpdateTime) * 0.000000001;
+		if (timeSinceLastUpdate > 0.5) {
+			resetLevels();
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	inline void VolumeMeter::calculateBallisticsForChannel(
+		int channelNr, uint64_t ts, qreal timeSinceLastRedraw)
+	{
+		if (currentPeak[channelNr] >= displayPeak[channelNr] ||
+		    isnan(displayPeak[channelNr])) {
+			// Attack of peak is immediate.
+			displayPeak[channelNr] = currentPeak[channelNr];
+		} else {
+			// Decay of peak is 40 dB / 1.7 seconds for Fast Profile
+			// 20 dB / 1.7 seconds for Medium Profile (Type I PPM)
+			// 24 dB / 2.8 seconds for Slow Profile (Type II PPM)
+			float decay =
+				float(peakDecayRate * timeSinceLastRedraw);
+			displayPeak[channelNr] =
+				CLAMP(displayPeak[channelNr] - decay,
+				      currentPeak[channelNr], 0);
+		}
+
+		if (currentPeak[channelNr] >= displayPeakHold[channelNr] ||
+		    !isfinite(displayPeakHold[channelNr])) {
+			// Attack of peak-hold is immediate, but keep track
+			// when it was last updated.
+			displayPeakHold[channelNr] = currentPeak[channelNr];
+			displayPeakHoldLastUpdateTime[channelNr] = ts;
+		} else {
+			// The peak and hold falls back to peak
+			// after 20 seconds.
+			qreal timeSinceLastPeak =
+				(uint64_t)(
+					ts -
+					displayPeakHoldLastUpdateTime[channelNr]) *
+				0.000000001;
+			if (timeSinceLastPeak > peakHoldDuration) {
+				displayPeakHold[channelNr] =
+					currentPeak[channelNr];
+				displayPeakHoldLastUpdateTime[channelNr] = ts;
+			}
+		}
+
+		if (currentInputPeak[channelNr] >=
+			    displayInputPeakHold[channelNr] ||
+		    !isfinite(displayInputPeakHold[channelNr])) {
+			// Attack of peak-hold is immediate, but keep track
+			// when it was last updated.
 			displayInputPeakHold[channelNr] =
 				currentInputPeak[channelNr];
 			displayInputPeakHoldLastUpdateTime[channelNr] = ts;
+		} else {
+			// The peak and hold falls back to peak after 1 second.
+			qreal timeSinceLastPeak =
+				(uint64_t)(ts -
+					   displayInputPeakHoldLastUpdateTime
+						   [channelNr]) *
+				0.000000001;
+			if (timeSinceLastPeak > inputPeakHoldDuration) {
+				displayInputPeakHold[channelNr] =
+					currentInputPeak[channelNr];
+				displayInputPeakHoldLastUpdateTime[channelNr] =
+					ts;
+			}
+		}
+
+		if (!isfinite(displayMagnitude[channelNr])) {
+			// The statements in the else-leg do not work with
+			// NaN and infinite displayMagnitude.
+			displayMagnitude[channelNr] =
+				currentMagnitude[channelNr];
+		} else {
+			// A VU meter will integrate to the new value to 99% in 300 ms.
+			// The calculation here is very simplified and is more accurate
+			// with higher frame-rate.
+			float attack = float((currentMagnitude[channelNr] -
+					      displayMagnitude[channelNr]) *
+					     (timeSinceLastRedraw /
+					      magnitudeIntegrationTime) *
+					     0.99);
+			displayMagnitude[channelNr] =
+				CLAMP(displayMagnitude[channelNr] + attack,
+				      (float)minimumLevel, 0);
 		}
 	}
 
-	if (!isfinite(displayMagnitude[channelNr])) {
-		// The statements in the else-leg do not work with
-		// NaN and infinite displayMagnitude.
-		displayMagnitude[channelNr] = currentMagnitude[channelNr];
-	} else {
-		// A VU meter will integrate to the new value to 99% in 300 ms.
-		// The calculation here is very simplified and is more accurate
-		// with higher frame-rate.
-		float attack =
-			float((currentMagnitude[channelNr] -
-			       displayMagnitude[channelNr]) *
-			      (timeSinceLastRedraw / magnitudeIntegrationTime) *
-			      0.99);
-		displayMagnitude[channelNr] =
-			CLAMP(displayMagnitude[channelNr] + attack,
-			      (float)minimumLevel, 0);
+	inline void VolumeMeter::calculateBallistics(uint64_t ts,
+						     qreal timeSinceLastRedraw)
+	{
+		QMutexLocker locker(&dataMutex);
+
+		for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS;
+		     channelNr++)
+			calculateBallisticsForChannel(channelNr, ts,
+						      timeSinceLastRedraw);
 	}
-}
 
-inline void VolumeMeter::calculateBallistics(uint64_t ts,
-					     qreal timeSinceLastRedraw)
-{
-	QMutexLocker locker(&dataMutex);
+	void VolumeMeter::paintInputMeter(QPainter & painter, int x, int y,
+					  int width, int height, float peakHold)
+	{
+		QMutexLocker locker(&dataMutex);
+		QColor color;
 
-	for (int channelNr = 0; channelNr < MAX_AUDIO_CHANNELS; channelNr++)
-		calculateBallisticsForChannel(channelNr, ts,
-					      timeSinceLastRedraw);
-}
-
-void VolumeMeter::paintInputMeter(QPainter &painter, int x, int y, int width,
-				  int height, float peakHold)
-{
-	QMutexLocker locker(&dataMutex);
-	QColor color;
-
-	if (peakHold < minimumInputLevel)
-		color = backgroundNominalColor;
-	else if (peakHold < warningLevel)
-		color = foregroundNominalColor;
-	else if (peakHold < errorLevel)
-		color = foregroundWarningColor;
-	else if (peakHold <= clipLevel)
-		color = foregroundErrorColor;
-	else
-		color = clipColor;
-
-	painter.fillRect(x, y, width, height, color);
-}
-
-void VolumeMeter::paintHTicks(QPainter &painter, int x, int y, int width,
-			      int height)
-{
-	qreal scale = width / minimumLevel;
-
-	painter.setFont(tickFont);
-	painter.setPen(majorTickColor);
-
-	// Draw major tick lines and numeric indicators.
-	for (int i = 0; i >= minimumLevel; i -= 5) {
-		int position = int(x + width - (i * scale) - 1);
-		QString str = QString::number(i);
-
-		if (i == 0 || i == -5)
-			painter.drawText(position - 3, height, str);
+		if (peakHold < minimumInputLevel)
+			color = backgroundNominalColor;
+		else if (peakHold < warningLevel)
+			color = foregroundNominalColor;
+		else if (peakHold < errorLevel)
+			color = foregroundWarningColor;
+		else if (peakHold <= clipLevel)
+			color = foregroundErrorColor;
 		else
-			painter.drawText(position - 5, height, str);
-		painter.drawLine(position, y, position, y + 2);
+			color = clipColor;
+
+		painter.fillRect(x, y, width, height, color);
 	}
 
-	// Draw minor tick lines.
-	painter.setPen(minorTickColor);
-	for (int i = 0; i >= minimumLevel; i--) {
-		int position = int(x + width - (i * scale) - 1);
-		if (i % 5 != 0)
-			painter.drawLine(position, y, position, y + 1);
+	void VolumeMeter::paintHTicks(QPainter & painter, int x, int y,
+				      int width, int height)
+	{
+		qreal scale = width / minimumLevel;
+
+		painter.setFont(tickFont);
+		painter.setPen(majorTickColor);
+
+		// Draw major tick lines and numeric indicators.
+		for (int i = 0; i >= minimumLevel; i -= 5) {
+			int position = int(x + width - (i * scale) - 1);
+			QString str = QString::number(i);
+
+			if (i == 0 || i == -5)
+				painter.drawText(position - 3, height, str);
+			else
+				painter.drawText(position - 5, height, str);
+			painter.drawLine(position, y, position, y + 2);
+		}
+
+		// Draw minor tick lines.
+		painter.setPen(minorTickColor);
+		for (int i = 0; i >= minimumLevel; i--) {
+			int position = int(x + width - (i * scale) - 1);
+			if (i % 5 != 0)
+				painter.drawLine(position, y, position, y + 1);
+		}
 	}
-}
 
-void VolumeMeter::paintVTicks(QPainter &painter, int x, int y, int height)
-{
-	qreal scale = height / minimumLevel;
+	void VolumeMeter::paintVTicks(QPainter & painter, int x, int y,
+				      int height)
+	{
+		qreal scale = height / minimumLevel;
 
-	painter.setFont(tickFont);
-	painter.setPen(majorTickColor);
+		painter.setFont(tickFont);
+		painter.setPen(majorTickColor);
 
-	// Draw major tick lines and numeric indicators.
-	for (int i = 0; i >= minimumLevel; i -= 5) {
-		int position = y + int((i * scale) - 1);
-		QString str = QString::number(i);
+		// Draw major tick lines and numeric indicators.
+		for (int i = 0; i >= minimumLevel; i -= 5) {
+			int position = y + int((i * scale) - 1);
+			QString str = QString::number(i);
 
-		if (i == 0)
-			painter.drawText(x + 5, position + 4, str);
-		else if (i == -60)
-			painter.drawText(x + 4, position, str);
-		else
-			painter.drawText(x + 4, position + 2, str);
-		painter.drawLine(x, position, x + 2, position);
+			if (i == 0)
+				painter.drawText(x + 5, position + 4, str);
+			else if (i == -60)
+				painter.drawText(x + 4, position, str);
+			else
+				painter.drawText(x + 4, position + 2, str);
+			painter.drawLine(x, position, x + 2, position);
+		}
+
+		// Draw minor tick lines.
+		painter.setPen(minorTickColor);
+		for (int i = 0; i >= minimumLevel; i--) {
+			int position = y + int((i * scale) - 1);
+			if (i % 5 != 0)
+				painter.drawLine(x, position, x + 1, position);
+		}
 	}
-
-	// Draw minor tick lines.
-	painter.setPen(minorTickColor);
-	for (int i = 0; i >= minimumLevel; i--) {
-		int position = y + int((i * scale) - 1);
-		if (i % 5 != 0)
-			painter.drawLine(x, position, x + 1, position);
-	}
-}
 
 #define CLIP_FLASH_DURATION_MS 1000
 
