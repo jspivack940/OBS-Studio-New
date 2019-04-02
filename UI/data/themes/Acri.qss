@@ -871,6 +871,7 @@ StreamCheckBox::indicator:unchecked:focus {
 	image: url(:/res/images/streamOFF.png);
 }
 
+
 RecCheckBox {
 	outline: none;
 }
