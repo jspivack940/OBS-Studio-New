@@ -196,6 +196,11 @@ enum obs_media_state {
  */
 #define OBS_SOURCE_SRGB (1 << 15)
 
+ /**
+ * Source type is a track and should not be shown to the user
+ */
+#define OBS_SOURCE_TRACK (1 << 16)
+
 /** @} */
 
 typedef void (*obs_source_enum_proc_t)(obs_source_t *parent,
@@ -498,7 +503,7 @@ struct obs_source_info {
 
 	/**
 	 * Gets the default settings for this source
-	 * 
+	 *
 	 * If get_defaults is also defined both will be called, and the first
 	 * call will be to get_defaults, then to get_defaults2.
 	 *
