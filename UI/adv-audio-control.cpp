@@ -41,9 +41,6 @@ OBSAdvAudioCtrl::OBSAdvAudioCtrl(QGridLayout *, obs_source_t *source_)
 	percent = new QSpinBox();
 	forceMono = new QCheckBox();
 	balance = new BalanceSlider();
-#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
-	monitoringType = new QComboBox();
-#endif
 	syncOffset = new QSpinBox();
 	mixer1 = new QCheckBox();
 	mixer2 = new QCheckBox();
@@ -169,21 +166,6 @@ OBSAdvAudioCtrl::OBSAdvAudioCtrl(QGridLayout *, obs_source_t *source_)
 	syncOffset->setAccessibleName(
 		QTStr("Basic.AdvAudio.SyncOffsetSource").arg(sourceName));
 
-	int idx;
-#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
-	monitoringType->addItem(QTStr("Basic.AdvAudio.Monitoring.None"),
-				(int)OBS_MONITORING_TYPE_NONE);
-	monitoringType->addItem(QTStr("Basic.AdvAudio.Monitoring.MonitorOnly"),
-				(int)OBS_MONITORING_TYPE_MONITOR_ONLY);
-	monitoringType->addItem(QTStr("Basic.AdvAudio.Monitoring.Both"),
-				(int)OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT);
-	int mt = (int)obs_source_get_monitoring_type(source);
-	idx = monitoringType->findData(mt);
-	monitoringType->setCurrentIndex(idx);
-	monitoringType->setAccessibleName(
-		QTStr("Basic.AdvAudio.MonitoringSource").arg(sourceName));
-#endif
-
 	mixer1->setText("1");
 	mixer1->setChecked(mixers & (1 << 0));
 	mixer1->setAccessibleName(
@@ -237,10 +219,6 @@ OBSAdvAudioCtrl::OBSAdvAudioCtrl(QGridLayout *, obs_source_t *source_)
 			 SLOT(ResetBalance()));
 	QWidget::connect(syncOffset, SIGNAL(valueChanged(int)), this,
 			 SLOT(syncOffsetChanged(int)));
-#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
-	QWidget::connect(monitoringType, SIGNAL(currentIndexChanged(int)), this,
-			 SLOT(monitoringTypeChanged(int)));
-#endif
 	QWidget::connect(mixer1, SIGNAL(clicked(bool)), this,
 			 SLOT(mixer1Changed(bool)));
 	QWidget::connect(mixer2, SIGNAL(clicked(bool)), this,
@@ -266,9 +244,6 @@ OBSAdvAudioCtrl::~OBSAdvAudioCtrl()
 	forceMonoContainer->deleteLater();
 	balanceContainer->deleteLater();
 	syncOffset->deleteLater();
-#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
-	monitoringType->deleteLater();
-#endif
 	mixerContainer->deleteLater();
 }
 
@@ -284,9 +259,6 @@ void OBSAdvAudioCtrl::ShowAudioControl(QGridLayout *layout)
 	layout->addWidget(forceMonoContainer, lastRow, idx++);
 	layout->addWidget(balanceContainer, lastRow, idx++);
 	layout->addWidget(syncOffset, lastRow, idx++);
-#if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
-	layout->addWidget(monitoringType, lastRow, idx++);
-#endif
 	layout->addWidget(mixerContainer, lastRow, idx++);
 	layout->layout()->setAlignment(mixerContainer, Qt::AlignVCenter);
 	layout->setHorizontalSpacing(15);
@@ -539,44 +511,6 @@ void OBSAdvAudioCtrl::syncOffsetChanged(int milliseconds)
 		std::bind(undo_redo, std::placeholders::_1, prev),
 		std::bind(undo_redo, std::placeholders::_1, val), name, name,
 		true);
-}
-
-void OBSAdvAudioCtrl::monitoringTypeChanged(int index)
-{
-	obs_monitoring_type prev = obs_source_get_monitoring_type(source);
-
-	obs_monitoring_type mt =
-		(obs_monitoring_type)monitoringType->itemData(index).toInt();
-	obs_source_set_monitoring_type(source, mt);
-
-	const char *type = nullptr;
-
-	switch (mt) {
-	case OBS_MONITORING_TYPE_NONE:
-		type = "none";
-		break;
-	case OBS_MONITORING_TYPE_MONITOR_ONLY:
-		type = "monitor only";
-		break;
-	case OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT:
-		type = "monitor and output";
-		break;
-	}
-
-	const char *name = obs_source_get_name(source);
-	blog(LOG_INFO, "User changed audio monitoring for source '%s' to: %s",
-	     name ? name : "(null)", type);
-
-	auto undo_redo = [](const std::string &name, obs_monitoring_type val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_monitoring_type(source, val);
-		obs_source_release(source);
-	};
-
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.MonitoringType.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, mt), name, name);
 }
 
 static inline void setMixer(obs_source_t *source, const int mixerIdx,
