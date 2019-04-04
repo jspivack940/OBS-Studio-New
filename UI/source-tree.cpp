@@ -699,6 +699,8 @@ SourceTreeModel::SourceTreeModel(SourceTree *st_)
 SourceTreeModel::~SourceTreeModel()
 {
 	obs_frontend_remove_event_callback(OBSFrontendEvent, this);
+	for (size_t i = 0; i < layers.size(); i++)
+		delete layers[i];
 }
 
 int SourceTreeModel::rowCount(const QModelIndex &parent) const
