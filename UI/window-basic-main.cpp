@@ -4342,6 +4342,8 @@ void OBSBasic::CreateSourcePopupMenu(int idx, bool preview)
 		popup.addAction(QTStr("Basic.Main.Ungroup"),
 				ui->sources, SLOT(UngroupSelectedGroups()));
 	}
+	popup.addAction(QTStr("Basic.Main.LayerItems"),
+		ui->sources, SLOT(LayerSelectedItems()));
 
 	popup.addSeparator();
 	popup.addAction(ui->actionCopySource);
@@ -4442,6 +4444,12 @@ void OBSBasic::CreateSourcePopupMenu(int idx, bool preview)
 	} else {
 		ui->actionPasteFilters->setEnabled(false);
 	}
+
+	QAction *action = popup.addAction(
+		QTStr("Basic.Main.LayerView.Enable"),
+		ui->sources, SLOT(ToggleMode()));
+	action->setCheckable(true);
+	action->setChecked(ui->sources->LayerMode());
 
 	popup.exec(QCursor::pos());
 }

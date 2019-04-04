@@ -109,11 +109,19 @@ class SourceTreeModel : public QAbstractListModel {
 	void GroupSelectedItems(QModelIndexList &indices);
 	void UngroupSelectedGroups(QModelIndexList &indices);
 
+	void LayerSelectedItems(QModelIndexList &indicies);
+	void UnlayerSelectedItem(obs_sceneitem_t *item);
+	void UnlayerSelectedItems(QModelIndexList &indicies);
+
 	void ExpandGroup(obs_sceneitem_t *item);
 	void CollapseGroup(obs_sceneitem_t *item);
 
 	void UpdateGroupState(bool update);
 
+	std::vector<std::vector<obs_sceneitem_t*>*> layers;
+protected:
+	bool ItemIsInLayer(obs_sceneitem_t *item);
+	void ShowLayer(obs_sceneitem_t *item);
 public:
 	explicit SourceTreeModel(SourceTree *st);
 	~SourceTreeModel();
@@ -129,6 +137,7 @@ class SourceTree : public QListView {
 	Q_OBJECT
 
 	bool ignoreReorder = false;
+	bool layerMode = false;
 
 	friend class SourceTreeModel;
 	friend class SourceTreeItem;
@@ -143,11 +152,15 @@ class SourceTree : public QListView {
 	}
 
 public:
+	bool LayerMode();
+
 	inline SourceTreeItem *GetItemWidget(int idx)
 	{
 		QWidget *widget = indexWidget(GetStm()->createIndex(idx, 0));
 		return reinterpret_cast<SourceTreeItem *>(widget);
 	}
+
+	bool ItemIsInLayer(obs_sceneitem_t *item);
 
 	explicit SourceTree(QWidget *parent = nullptr);
 
@@ -165,9 +178,12 @@ public:
 	bool GroupedItemsSelected() const;
 
 public slots:
+	void ToggleMode();
 	inline void ReorderItems() {GetStm()->ReorderItems();}
+	void ShowLayer(OBSSceneItem item);
 	void Remove(OBSSceneItem item);
 	void GroupSelectedItems();
+	void LayerSelectedItems();
 	void UngroupSelectedGroups();
 	void AddGroup();
 	void Edit(int idx);
