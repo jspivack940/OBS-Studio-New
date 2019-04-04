@@ -12,6 +12,12 @@ static const char *rtmp_custom_name(void *unused)
 	return obs_module_text("CustomStreamingServer");
 }
 
+static const char *mpegts_custom_name(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+	return obs_module_text("MpegtsCustomStreamingServer");
+}
+
 static void rtmp_custom_update(void *data, obs_data_t *settings)
 {
 	struct rtmp_custom *service = data;
@@ -24,6 +30,18 @@ static void rtmp_custom_update(void *data, obs_data_t *settings)
 	service->use_auth = obs_data_get_bool(settings, "use_auth");
 	service->username = bstrdup(obs_data_get_string(settings, "username"));
 	service->password = bstrdup(obs_data_get_string(settings, "password"));
+}
+
+
+static void mpegts_custom_update(void *data, obs_data_t *settings)
+{
+	struct rtmp_custom *service = data;
+
+	bfree(service->server);
+	bfree(service->key);
+
+	service->server = bstrdup(obs_data_get_string(settings, "mpegts_custom_server"));
+	service->key = bstrdup(obs_data_get_string(settings, "mpegts_custom_key"));
 }
 
 static void rtmp_custom_destroy(void *data)
@@ -41,6 +59,15 @@ static void *rtmp_custom_create(obs_data_t *settings, obs_service_t *service)
 {
 	struct rtmp_custom *data = bzalloc(sizeof(struct rtmp_custom));
 	rtmp_custom_update(data, settings);
+
+	UNUSED_PARAMETER(service);
+	return data;
+}
+
+static void *mpegts_custom_create(obs_data_t *settings, obs_service_t *service)
+{
+	struct rtmp_custom *data = bzalloc(sizeof(struct rtmp_custom));
+	mpegts_custom_update(data, settings);
 
 	UNUSED_PARAMETER(service);
 	return data;
@@ -78,6 +105,20 @@ static obs_properties_t *rtmp_custom_properties(void *unused)
 	return ppts;
 }
 
+static obs_properties_t *mpegts_custom_properties(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+
+	obs_properties_t *ppts = obs_properties_create();
+
+	obs_properties_add_text(ppts, "mpegts_custom_server", "URL", OBS_TEXT_DEFAULT);
+
+	obs_properties_add_text(ppts, "mpegts_custom_key", obs_module_text("StreamKey"),
+		OBS_TEXT_PASSWORD);
+
+	return ppts;
+}
+
 static const char *rtmp_custom_url(void *data)
 {
 	struct rtmp_custom *service = data;
@@ -106,6 +147,12 @@ static const char *rtmp_custom_password(void *data)
 	return service->password;
 }
 
+static const char *mpegts_custom_get_output_type(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+	return "ffmpeg_encoded_output";
+}
+
 struct obs_service_info rtmp_custom_service = {
 	.id             = "rtmp_custom",
 	.get_name       = rtmp_custom_name,
@@ -117,4 +164,18 @@ struct obs_service_info rtmp_custom_service = {
 	.get_key        = rtmp_custom_key,
 	.get_username   = rtmp_custom_username,
 	.get_password   = rtmp_custom_password
+};
+
+struct obs_service_info mpegts_custom_service = {
+	.id = "mpegts_custom",
+	.get_name = mpegts_custom_name,
+	.create = mpegts_custom_create,
+	.destroy = rtmp_custom_destroy,
+	.update = mpegts_custom_update,
+	.get_properties = mpegts_custom_properties,
+	.get_url = rtmp_custom_url,
+	.get_key = rtmp_custom_key,
+	.get_username = rtmp_custom_username,
+	.get_password = rtmp_custom_password,
+	.get_output_type = mpegts_custom_get_output_type
 };

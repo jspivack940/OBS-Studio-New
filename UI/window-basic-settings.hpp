@@ -228,6 +228,7 @@ private:
 	/* stream */
 	void InitStreamPage();
 	inline bool IsCustomService() const;
+	inline bool IsCustomMpegtsService() const;
 	void LoadServices(bool showAll);
 	void OnOAuthStreamKeyConnected();
 	void OnAuthConnected();
