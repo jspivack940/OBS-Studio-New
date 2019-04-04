@@ -97,9 +97,10 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 	auto setItemVisible = [=] (bool checked)
 	{
 		SignalBlocker sourcesSignalBlocker(this);
-		if (tree->LayerMode() && tree->ItemIsInLayer(sceneitem))
+		if (tree->LayerMode() && tree->ItemIsInLayer(sceneitem)) {
 			tree->ShowLayer(sceneitem);
-		else
+			vis->setChecked(true);
+		} else
 			obs_sceneitem_set_visible(sceneitem, checked);
 	};
 
@@ -885,19 +886,18 @@ void SourceTreeModel::UnlayerSelectedItems(QModelIndexList &indices)
 {
 	for (int i = indices.count() - 1; i >= 0; i--) {
 		obs_sceneitem_t *item = items[indices[i].row()];
-		for (int j = 0; j < layers.size(); i++) {
+		for (int j = 0; j < layers.size(); j++) {
 			std::vector<obs_sceneitem_t*> *currentLayer =
 				layers[j];
 			if (!currentLayer) {
 				layers.erase(layers.begin() + (j--));
 				delete currentLayer;
-				continue;
 			}
-			auto it = std::remove_if(currentLayer->begin(), currentLayer->end(),
-				[&item](obs_sceneitem_t *layeritem) {
+			currentLayer->erase(std::remove_if(currentLayer->begin(), currentLayer->end(),
+				[=](const obs_sceneitem_t *layeritem) {
 				return item == layeritem;
-			});
-			currentLayer->erase(it, currentLayer->end());
+			}), currentLayer->end());
+
 			if (!currentLayer->size()) {
 				layers.erase(layers.begin() + (j--));
 				delete currentLayer;
