@@ -284,6 +284,7 @@ private:
 	void UpdatePreviewScalingMenu();
 
 	void LoadSceneListOrder(obs_data_array_t *array);
+	obs_data_array_t *SaveLayers();
 	obs_data_array_t *SaveSceneListOrder();
 	void ChangeSceneIndex(bool relative, int idx, int invalidIdx);
 

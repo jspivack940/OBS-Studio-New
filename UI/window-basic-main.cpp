@@ -539,6 +539,37 @@ void OBSBasic::ClearVolumeControls()
 	volumes.clear();
 }
 
+obs_data_array_t *OBSBasic::SaveLayers()
+{
+	obs_data_array_t *layers = obs_data_array_create();
+	std::vector<std::vector<obs_sceneitem_t*>*> l =
+		ui->sources->GetLayers();
+	for (size_t i = 0; i < l.size(); i++) {
+		std::vector<obs_sceneitem_t*> *layer = l[i];
+		if (!layer)
+			continue;
+		obs_data_t *layerdata = obs_data_create();
+		obs_data_array_t *layerarray = obs_data_array_create();
+		for (size_t j = 0; j < layer->size(); j++) {
+			obs_sceneitem_t *item = layer->at(j);
+			obs_source_t *source = obs_sceneitem_get_source(item);
+			if (!source)
+				continue;
+			obs_data_t *data = obs_data_create();
+			obs_data_set_string(data, "name",
+					obs_source_get_name(source));
+			obs_data_array_push_back(layerarray, data);
+			obs_data_release(data);
+		}
+		obs_data_set_array(layerdata, "layer", layerarray);
+		obs_data_array_push_back(layers, layerdata);
+		obs_data_release(layerdata);
+		obs_data_array_release(layerarray);
+		delete layer;
+	}
+	return layers;
+}
+
 obs_data_array_t *OBSBasic::SaveSceneListOrder()
 {
 	obs_data_array_t *sceneOrder = obs_data_array_create();
@@ -600,6 +631,7 @@ void OBSBasic::Save(const char *file)
 	if (!curProgramScene)
 		curProgramScene = obs_scene_get_source(scene);
 
+	obs_data_array_t *layers = SaveLayers();
 	obs_data_array_t *sceneOrder = SaveSceneListOrder();
 	obs_data_array_t *transitions = SaveTransitions();
 	obs_data_array_t *quickTrData = SaveQuickTransitions();
@@ -617,6 +649,7 @@ void OBSBasic::Save(const char *file)
 			ui->preview->GetScrollX());
 	obs_data_set_double(saveData, "scaling_off_y",
 			ui->preview->GetScrollY());
+	obs_data_set_array(saveData, "layers", layers);
 
 	if (api) {
 		obs_data_t *moduleObj = obs_data_create();
@@ -633,6 +666,7 @@ void OBSBasic::Save(const char *file)
 	obs_data_array_release(quickTrData);
 	obs_data_array_release(transitions);
 	obs_data_array_release(savedProjectorList);
+	obs_data_array_release(layers);
 }
 
 void OBSBasic::DeferSaveBegin()
@@ -850,6 +884,7 @@ void OBSBasic::Load(const char *file)
 	obs_data_array_t *sources    = obs_data_get_array(data, "sources");
 	obs_data_array_t *groups     = obs_data_get_array(data, "groups");
 	obs_data_array_t *transitions= obs_data_get_array(data, "transitions");
+	obs_data_array_t *layers     = obs_data_get_array(data, "layers");
 	const char       *sceneName = obs_data_get_string(data,
 			"current_scene");
 	const char       *programSceneName = obs_data_get_string(data,
@@ -1031,6 +1066,7 @@ retryScene:
 
 	disableSaving--;
 
+	obs_data_array_release(layers);
 	if (api) {
 		api->on_event(OBS_FRONTEND_EVENT_SCENE_CHANGED);
 		api->on_event(OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED);

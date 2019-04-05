@@ -130,6 +130,19 @@ protected:
 	bool ItemIsInLayer(obs_sceneitem_t *item);
 	void ShowLayer(obs_sceneitem_t *item);
 	QString ItemLayer(obs_sceneitem_t *item);
+	std::vector<std::vector<obs_sceneitem_t*>*> GetLayers()
+	{
+		std::vector<std::vector<obs_sceneitem_t*>*> l;
+		l.reserve(layers.size());
+		for (size_t i = 0; i < layers.size(); i++) {
+			std::vector<obs_sceneitem_t*> *layer =
+				new std::vector<obs_sceneitem_t*>();
+			layer->reserve(layers[i]->size());
+			layer->assign(layers[i]->begin(), layers[i]->end());
+			l.push_back(layer);
+		}
+		return l;
+	}
 public:
 	explicit SourceTreeModel(SourceTree *st);
 	~SourceTreeModel();
@@ -179,6 +192,10 @@ public:
 	inline void Add(obs_sceneitem_t *item) {GetStm()->Add(item);}
 	inline OBSSceneItem Get(int idx) {return GetStm()->Get(idx);}
 	inline QString GetNewGroupName() {return GetStm()->GetNewGroupName();}
+	inline std::vector<std::vector<obs_sceneitem_t*>*> GetLayers()
+	{
+		return GetStm()->GetLayers();
+	}
 
 	void SelectItem(obs_sceneitem_t *sceneitem, bool select);
 
