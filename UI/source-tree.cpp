@@ -72,6 +72,11 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 	label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 	label->setAttribute(Qt::WA_TranslucentBackground);
 
+	layerLabel = new QLabel(QT_UTF8(""));
+	layerLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+	layerLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+	layerLabel->setAttribute(Qt::WA_TranslucentBackground);
+
 #ifdef __APPLE__
 	vis->setAttribute(Qt::WA_LayoutUsesWidgetRect);
 	lock->setAttribute(Qt::WA_LayoutUsesWidgetRect);
@@ -81,6 +86,7 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 	boxLayout->setContentsMargins(1, 1, 2, 1);
 	boxLayout->setSpacing(1);
 	boxLayout->addWidget(label);
+	boxLayout->addWidget(layerLabel);
 	boxLayout->addWidget(vis);
 	boxLayout->addWidget(lock);
 #ifdef __APPLE__
@@ -102,6 +108,7 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 			vis->setChecked(true);
 		} else
 			obs_sceneitem_set_visible(sceneitem, checked);
+		
 	};
 
 	auto setItemLocked = [this] (bool checked)
@@ -172,9 +179,11 @@ void SourceTreeItem::ReconnectSignals()
 			(obs_sceneitem_t*)calldata_ptr(cd, "item");
 		bool visible = calldata_bool(cd, "visible");
 
-		if (curItem == this_->sceneitem)
+		if (curItem == this_->sceneitem) {
 			QMetaObject::invokeMethod(this_, "VisibilityChanged",
 					Q_ARG(bool, visible));
+			QMetaObject::invokeMethod(this_, "ReLayer");
+		}
 	};
 
 	auto itemDeselect = [] (void *data, calldata_t *cd)
@@ -235,6 +244,12 @@ void SourceTreeItem::ReconnectSignals()
 	signal = obs_source_get_signal_handler(source);
 	renameSignal.Connect(signal, "rename", renamed, this);
 	removeSignal.Connect(signal, "remove", removeSource, this);
+}
+
+void SourceTreeItem::ReLayer()
+{
+	QString text = tree->GetStm()->ItemLayer(sceneitem);
+	layerLabel->setText(text);
 }
 
 void SourceTreeItem::mouseDoubleClickEvent(QMouseEvent *event)
@@ -549,6 +564,30 @@ static inline void MoveItem(QVector<OBSSceneItem> &items, int oldIdx, int newIdx
 	items.insert(newIdx, item);
 }
 
+QString SourceTreeModel::ItemLayer(obs_sceneitem_t *item)
+{
+	int i = 0;
+	for (; i < layers.size(); i++) {
+		std::vector<obs_sceneitem_t*> *currentLayer =
+			layers[i];
+		if (!currentLayer) {
+			layers.erase(layers.begin() + (i--));
+			delete currentLayer;
+			continue;
+		}
+		auto it = std::find_if(currentLayer->begin(), currentLayer->end(),
+			[&item](obs_sceneitem_t *layeritem) {
+			return item == layeritem;
+		});
+		if (it != currentLayer->end())
+			break;
+	}
+	if (i >= layers.size())
+		return "";
+	else
+		return QString("L%1").arg(i);
+}
+
 /* reorders list optimally with model reorder funcs */
 void SourceTreeModel::ReorderItems()
 {
@@ -680,6 +719,8 @@ void SourceTreeModel::Remove(obs_sceneitem_t *item)
 
 	if (is_group)
 		UpdateGroupState(true);
+
+	QMetaObject::invokeMethod(st, "ReLayer");
 }
 
 OBSSceneItem SourceTreeModel::Get(int idx)
@@ -860,6 +901,8 @@ void SourceTreeModel::LayerSelectedItems(QModelIndexList &indices)
 	}
 
 	layers.push_back(layer);
+
+	QMetaObject::invokeMethod(st, "ReLayer");
 }
 
 void SourceTreeModel::UnlayerSelectedItem(obs_sceneitem_t *item)
@@ -886,26 +929,8 @@ void SourceTreeModel::UnlayerSelectedItem(obs_sceneitem_t *item)
 
 void SourceTreeModel::UnlayerSelectedItems(QModelIndexList &indices)
 {
-	for (int i = indices.count() - 1; i >= 0; i--) {
-		obs_sceneitem_t *item = items[indices[i].row()];
-		for (int j = 0; j < layers.size(); j++) {
-			std::vector<obs_sceneitem_t*> *currentLayer =
-				layers[j];
-			if (!currentLayer) {
-				layers.erase(layers.begin() + (j--));
-				delete currentLayer;
-			}
-			currentLayer->erase(std::remove_if(currentLayer->begin(), currentLayer->end(),
-				[=](const obs_sceneitem_t *layeritem) {
-				return item == layeritem;
-			}), currentLayer->end());
-
-			if (!currentLayer->size()) {
-				layers.erase(layers.begin() + (j--));
-				delete currentLayer;
-			}
-		}
-	}
+	for (int i = indices.count() - 1; i >= 0; i--)
+		UnlayerSelectedItem(items[indices[i].row()]);
 }
 
 void SourceTreeModel::ShowLayer(obs_sceneitem_t *item)
@@ -1555,6 +1580,23 @@ void SourceTree::ToggleMode()
 bool SourceTree::LayerMode()
 {
 	return layerMode;
+}
+
+QString SourceTree::ItemLayer(obs_sceneitem_t *item)
+{
+	return GetStm()->ItemLayer(item);
+}
+
+void SourceTree::ReLayer()
+{
+	SourceTreeModel *stm = GetStm();
+	for (size_t i = 0; i < stm->items.count(); i++) {
+		QModelIndex index = stm->createIndex(i, 0);
+		QWidget *widget = indexWidget(index);
+		SourceTreeItem *itemWidget =
+			reinterpret_cast<SourceTreeItem *>(widget);
+		QMetaObject::invokeMethod(itemWidget, "ReLayer");
+	}
 }
 
 void SourceTree::GroupSelectedItems()

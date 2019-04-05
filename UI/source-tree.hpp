@@ -48,10 +48,16 @@ class SourceTreeItem : public QWidget {
 public:
 	explicit SourceTreeItem(SourceTree *tree, OBSSceneItem sceneitem);
 	bool IsEditing();
+protected:
+	void SetLayerText(QString &text)
+	{
+		layerLabel->setText(text);
+	}
 
 private:
 	QSpacerItem *spacer = nullptr;
 	QCheckBox *expand = nullptr;
+	QLabel *layerLabel = nullptr;
 	VisibilityCheckBox *vis = nullptr;
 	LockedCheckBox *lock = nullptr;
 	QHBoxLayout *boxLayout = nullptr;
@@ -83,6 +89,7 @@ private slots:
 	void ExpandClicked(bool checked);
 
 	void Deselect();
+	void ReLayer();
 };
 
 class SourceTreeModel : public QAbstractListModel {
@@ -122,6 +129,7 @@ class SourceTreeModel : public QAbstractListModel {
 protected:
 	bool ItemIsInLayer(obs_sceneitem_t *item);
 	void ShowLayer(obs_sceneitem_t *item);
+	QString ItemLayer(obs_sceneitem_t *item);
 public:
 	explicit SourceTreeModel(SourceTree *st);
 	~SourceTreeModel();
@@ -153,6 +161,7 @@ class SourceTree : public QListView {
 
 public:
 	bool LayerMode();
+	QString ItemLayer(obs_sceneitem_t *item);
 
 	inline SourceTreeItem *GetItemWidget(int idx)
 	{
@@ -176,8 +185,9 @@ public:
 	bool MultipleBaseSelected() const;
 	bool GroupsSelected() const;
 	bool GroupedItemsSelected() const;
-
+	
 public slots:
+	void ReLayer();
 	void ToggleMode();
 	inline void ReorderItems() {GetStm()->ReorderItems();}
 	void ShowLayer(OBSSceneItem item);
