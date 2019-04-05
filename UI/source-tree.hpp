@@ -92,6 +92,11 @@ private slots:
 	void ReLayer();
 };
 
+struct layer_info {
+	std::string name;
+	bool loaded;
+};
+
 class SourceTreeModel : public QAbstractListModel {
 	Q_OBJECT
 
@@ -116,6 +121,7 @@ class SourceTreeModel : public QAbstractListModel {
 	void GroupSelectedItems(QModelIndexList &indices);
 	void UngroupSelectedGroups(QModelIndexList &indices);
 
+	void PrepLayerItems(std::vector<std::string> names);
 	void LayerSelectedItems(QModelIndexList &indicies);
 	void UnlayerSelectedItem(obs_sceneitem_t *item);
 	void UnlayerSelectedItems(QModelIndexList &indicies);
@@ -126,9 +132,11 @@ class SourceTreeModel : public QAbstractListModel {
 	void UpdateGroupState(bool update);
 
 	std::vector<std::vector<obs_sceneitem_t*>*> layers;
+	std::vector<std::vector<layer_info>> savedLayers;
 protected:
 	bool ItemIsInLayer(obs_sceneitem_t *item);
 	void ShowLayer(obs_sceneitem_t *item);
+	void AddItemToLayer(obs_sceneitem_t *item, size_t index);
 	QString ItemLayer(obs_sceneitem_t *item);
 	std::vector<std::vector<obs_sceneitem_t*>*> GetLayers()
 	{
@@ -173,6 +181,7 @@ class SourceTree : public QListView {
 	}
 
 public:
+	void LoadLayers(obs_data_array_t *layers);
 	bool LayerMode();
 	QString ItemLayer(obs_sceneitem_t *item);
 
@@ -205,6 +214,7 @@ public:
 	
 public slots:
 	void ReLayer();
+	void SetMode(bool mode);
 	void ToggleMode();
 	inline void ReorderItems() {GetStm()->ReorderItems();}
 	void ShowLayer(OBSSceneItem item);

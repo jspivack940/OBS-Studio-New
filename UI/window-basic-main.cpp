@@ -650,6 +650,7 @@ void OBSBasic::Save(const char *file)
 	obs_data_set_double(saveData, "scaling_off_y",
 			ui->preview->GetScrollY());
 	obs_data_set_array(saveData, "layers", layers);
+	obs_data_set_bool(saveData, "layer_mode", ui->sources->LayerMode());
 
 	if (api) {
 		obs_data_t *moduleObj = obs_data_create();
@@ -885,12 +886,16 @@ void OBSBasic::Load(const char *file)
 	obs_data_array_t *groups     = obs_data_get_array(data, "groups");
 	obs_data_array_t *transitions= obs_data_get_array(data, "transitions");
 	obs_data_array_t *layers     = obs_data_get_array(data, "layers");
+	bool layer_mode              = obs_data_get_bool(data, "layer_mode");
 	const char       *sceneName = obs_data_get_string(data,
 			"current_scene");
 	const char       *programSceneName = obs_data_get_string(data,
 			"current_program_scene");
 	const char       *transitionName = obs_data_get_string(data,
 			"current_transition");
+
+	ui->sources->LoadLayers(layers);
+	ui->sources->SetMode(layer_mode);
 
 	if (!opt_starting_scene.empty()) {
 		programSceneName = opt_starting_scene.c_str();
@@ -2612,6 +2617,7 @@ static bool select_one(obs_scene_t *scene, obs_sceneitem_t *item, void *param)
 void OBSBasic::AddSceneItem(OBSSceneItem item)
 {
 	obs_scene_t  *scene  = obs_sceneitem_get_scene(item);
+	//ui->sources->LoadIntoLayer(item);
 
 	if (GetCurrentScene() == scene)
 		ui->sources->Add(item);

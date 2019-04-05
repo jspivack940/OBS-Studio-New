@@ -676,6 +676,21 @@ void SourceTreeModel::Add(obs_sceneitem_t *item)
 		endInsertRows();
 
 		st->UpdateWidget(createIndex(0, 0, nullptr), item);
+/*
+		obs_source_t *source = obs_sceneitem_get_source(item);
+		std::string name = obs_source_get_name(source);
+		for (size_t i = 0; i < savedLayers.size(); i++) {
+			std::vector<layer_info> names = savedLayers[i];
+			auto it = std::find_if(names.begin(), names.end(),
+				[&name](layer_info &item) {
+				return name == item.name;
+			});
+			if (it != names.end()) {
+				savedLayers[i].erase(it);
+				AddItemToLayer(item, i);
+			}
+		}
+		*/
 	}
 }
 
@@ -884,6 +899,37 @@ bool SourceTreeModel::ItemIsInLayer(obs_sceneitem_t *item)
 			return true;
 	}
 	return false;
+}
+
+void SourceTreeModel::PrepLayerItems(std::vector<std::string> names)
+{
+	if (names.size() == 0)
+		return;
+	std::vector<layer_info> info;
+	info.reserve(names.size());
+	for (size_t i = 0; i < names.size(); i++){
+		struct layer_info layerinf;
+		layerinf.loaded = false;
+		layerinf.name = names[i];
+		info.push_back(layerinf);
+	}
+	savedLayers.push_back(info);
+}
+
+void SourceTreeModel::AddItemToLayer(obs_sceneitem_t *item, size_t index)
+{
+	std::vector<obs_sceneitem_t *> *layer = nullptr;
+	UnlayerSelectedItem(item);
+	if (index >= layers.size()) {
+		layer = new std::vector<obs_sceneitem_t*>();
+		layer->push_back(item);
+		layers.push_back(layer);
+	} else {
+		layer = layers[index];
+		layer->push_back(item);
+	}
+
+	QMetaObject::invokeMethod(st, "ReLayer");
 }
 
 void SourceTreeModel::LayerSelectedItems(QModelIndexList &indices)
@@ -1120,6 +1166,34 @@ void SourceTree::mouseDoubleClickEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton)
 		QListView::mouseDoubleClickEvent(event);
+}
+
+void SourceTree::LoadLayers(obs_data_array_t *layers)
+{
+	if (!layers)
+		return;
+	size_t count = obs_data_array_count(layers);
+	std::vector<std::string> complete_layer;
+	for (size_t i = 0; i < count; i++) {
+		obs_data_t *data = obs_data_array_item(layers, i);
+		obs_data_array_t *layer = obs_data_get_array(data, "layer");
+		if (!layer) {
+			obs_data_release(data);
+			obs_data_array_release(layer);
+			continue;
+		}
+		size_t layer_count = obs_data_array_count(layer);
+		complete_layer.clear();
+		complete_layer.reserve(layer_count);
+		for (size_t j = 0; j < layer_count; j++) {
+			obs_data_t *layerdata = obs_data_array_item(layer, j);
+			std::string n = obs_data_get_string(layerdata, "name");
+			complete_layer.push_back(n);
+			obs_data_release(layerdata);
+		}
+		GetStm()->PrepLayerItems(complete_layer);
+		obs_data_release(data);
+	}
 }
 
 void SourceTree::dropEvent(QDropEvent *event)
@@ -1570,6 +1644,11 @@ void SourceTree::ShowLayer(OBSSceneItem item)
 {
 	if (layerMode)
 		GetStm()->ShowLayer(item);
+}
+
+void SourceTree::SetMode(bool mode)
+{
+	layerMode = mode;
 }
 
 void SourceTree::ToggleMode()
