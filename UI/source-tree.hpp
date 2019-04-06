@@ -112,6 +112,7 @@ class SourceTreeModel : public QAbstractListModel {
 	void SceneChanged();
 	void ReorderItems();
 
+	void LoadIntoLayer(obs_sceneitem_t *item);
 	void Add(obs_sceneitem_t *item);
 	void Remove(obs_sceneitem_t *item);
 	OBSSceneItem Get(int idx);
@@ -181,6 +182,10 @@ class SourceTree : public QListView {
 	}
 
 public:
+	inline void LoadIntoLayer(obs_sceneitem_t *item)
+	{
+		GetStm()->LoadIntoLayer(item);
+	};
 	void LoadLayers(obs_data_array_t *layers);
 	bool LayerMode();
 	QString ItemLayer(obs_sceneitem_t *item);

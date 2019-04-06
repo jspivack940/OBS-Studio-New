@@ -2617,7 +2617,7 @@ static bool select_one(obs_scene_t *scene, obs_sceneitem_t *item, void *param)
 void OBSBasic::AddSceneItem(OBSSceneItem item)
 {
 	obs_scene_t  *scene  = obs_sceneitem_get_scene(item);
-	//ui->sources->LoadIntoLayer(item);
+	ui->sources->LoadIntoLayer(item);
 
 	if (GetCurrentScene() == scene)
 		ui->sources->Add(item);

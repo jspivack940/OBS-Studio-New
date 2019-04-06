@@ -666,6 +666,23 @@ void SourceTreeModel::ReorderItems()
 	}
 }
 
+void SourceTreeModel::LoadIntoLayer(obs_sceneitem_t *item)
+{
+	obs_source_t *source = obs_sceneitem_get_source(item);
+	std::string name = obs_source_get_name(source);
+	for (size_t i = 0; i < savedLayers.size(); i++) {
+		std::vector<layer_info> names = savedLayers[i];
+		auto it = std::find_if(names.begin(), names.end(),
+			[&name](layer_info &item) {
+			return name == item.name;
+		});
+		if (it != names.end()) {
+			AddItemToLayer(item, i);
+			break;
+		}
+	}
+}
+
 void SourceTreeModel::Add(obs_sceneitem_t *item)
 {
 	if (obs_sceneitem_is_group(item)) {
@@ -676,21 +693,6 @@ void SourceTreeModel::Add(obs_sceneitem_t *item)
 		endInsertRows();
 
 		st->UpdateWidget(createIndex(0, 0, nullptr), item);
-/*
-		obs_source_t *source = obs_sceneitem_get_source(item);
-		std::string name = obs_source_get_name(source);
-		for (size_t i = 0; i < savedLayers.size(); i++) {
-			std::vector<layer_info> names = savedLayers[i];
-			auto it = std::find_if(names.begin(), names.end(),
-				[&name](layer_info &item) {
-				return name == item.name;
-			});
-			if (it != names.end()) {
-				savedLayers[i].erase(it);
-				AddItemToLayer(item, i);
-			}
-		}
-		*/
 	}
 }
 
