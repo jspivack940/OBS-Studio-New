@@ -11,26 +11,26 @@ static bool listSceneItems(obs_scene_t *scene, obs_sceneitem_t *item, void *vptr
 	return true;
 }
 
-static OBSLayerView *layer_view = nullptr;
-
 static void signal_callback_add(void *vptr, calldata_t *cbdata)
 {
-	OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
+	//OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
 	obs_sceneitem_t *item = (obs_sceneitem_t*)calldata_ptr(cbdata, "item");
 	obs_source_t *source = obs_sceneitem_get_source(item);
 	const char *name = obs_source_get_name(source);
 	blog(LOG_INFO, "Scene Item Added: %s", name);
-	view->AddSceneItem(item);
+	if(layer_view)
+		layer_view->AddSceneItem(item);
 }
 
 static void signal_callback_remove(void *vptr, calldata_t *cbdata)
 {
-	OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
+	//OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
 	obs_sceneitem_t *item = (obs_sceneitem_t*)calldata_ptr(cbdata, "item");
 	obs_source_t *source = obs_sceneitem_get_source(item);
 	const char *name = obs_source_get_name(source);
 	blog(LOG_INFO, "Scene Item Removed: %s", name);
-	view->RemoveSceneItem(item);
+	if (layer_view)
+		layer_view->RemoveSceneItem(item);
 }
 
 static void event_callback(enum obs_frontend_event event,
@@ -53,7 +53,8 @@ static void event_callback(enum obs_frontend_event event,
 
 		obs_frontend_source_list_free(&scenes);
 
-		view->UpdateScene();
+		if(layer_view)
+			layer_view->UpdateScene();
 		break;
 	case OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED:
 		blog(LOG_INFO, "Scene List Changed");
@@ -68,19 +69,21 @@ static void event_callback(enum obs_frontend_event event,
 		}
 
 		obs_frontend_source_list_free(&scenes);
-
-		view->UpdateScene();
+		if(layer_view)
+			layer_view->UpdateScene();
 		break;
 	}
 }
 
 static void saveload_callback(obs_data_t *save_data, bool saving, void *vptr)
 {
-	OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
-	if (saving)
-		view->SaveData(save_data);
-	else 
-		view->LoadData(save_data);
+	//OBSLayerView *view = static_cast<OBSLayerView*>(vptr);
+	if (layer_view) {
+		if (saving)
+			layer_view->SaveData(save_data);
+		else
+			layer_view->LoadData(save_data);
+	}
 }
 
 bool obs_module_load()
@@ -109,5 +112,6 @@ bool obs_module_load()
 
 void obs_module_unload()
 {
-	delete layer_view;
+	obs_frontend_remove_event_callback(event_callback, layer_view);
+	obs_frontend_remove_save_callback(saveload_callback, layer_view);
 }

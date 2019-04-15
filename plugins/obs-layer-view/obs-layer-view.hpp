@@ -34,6 +34,10 @@ const char *sceneitem_get_name(obs_sceneitem_t *item)
 	return obs_source_get_name(source);
 }
 
+class OBSLayerView;
+
+static OBSLayerView *layer_view = nullptr;
+
 class OBSLayerView : public QDockWidget {
 private:
 	QWidget *_customgui = nullptr;
@@ -76,70 +80,6 @@ public:
 		}
 		blog(LOG_INFO, "Finished Loading");
 	}
-	/*
-	void Load()
-	{
-		if (!saved) {
-			std::string file = obs_get_module_data_path(obs_current_module());
-			file += "/layers.json";
-			saved = obs_data_create_from_json_file_safe(file.c_str(),
-					"bak");
-			obs_data_array_t *layers = obs_data_get_array(saved, "layers");
-			size_t count = obs_data_array_count(layers);
-			_layersinfo.clear();
-			_layersinfo.reserve(count);
-			for (size_t i = 0; i < count; i++) {
-				obs_data_t *layeritem = obs_data_array_item(layers, i);
-				obs_data_array_t *layer = obs_data_get_array(layeritem, "layer");
-				size_t count2 = obs_data_array_count(layer);
-				std::vector<std::string> names;
-				names.reserve(count2);
-				for (size_t j = 0; j < count; j++) {
-					obs_data_t *itemdata = obs_data_array_item(layer, j);
-					names.push_back(obs_data_get_string(itemdata, "name"));
-					obs_data_release(itemdata);
-				}
-				_layersinfo.push_back(names);
-				obs_data_array_release(layer);
-				obs_data_release(layeritem);
-			}
-			obs_data_array_release(layers);
-		}
-	}
-
-	void Save()
-	{
-		obs_data_t *data = obs_data_create();
-		obs_data_array_t *layerarray = obs_data_array_create();
-		for (size_t i = 0; i < _layers.size(); i++) {
-			std::vector<obs_sceneitem_t*> layer = _layers[i];
-			obs_data_t *layerdata = obs_data_create();
-			obs_data_array_t *itemarray = obs_data_array_create();
-
-			for (obs_sceneitem_t *item : layer) {
-				obs_data_t *iteminfo = obs_data_create();
-				obs_source_t *source = obs_sceneitem_get_source(item);
-				const char *name = obs_source_get_name(source);
-				obs_data_set_string(iteminfo, "name", name);
-				obs_data_array_push_back(itemarray, iteminfo);
-				obs_data_release(iteminfo);
-			}
-
-			obs_data_set_array(layerdata, "layer", itemarray);
-			obs_data_array_push_back(layerarray, layerdata);
-			obs_data_array_release(itemarray);
-		}
-		obs_data_set_array(data, "layers", layerarray);
-		obs_data_array_release(layerarray);
-
-		std::string file = obs_get_module_data_path(obs_current_module());
-		file += "/layers.json";
-		//char *file = obs_module_file("layers.json");
-		obs_data_save_json_safe(data, file.c_str(), "tmp", "bak");
-		obs_data_release(data);
-		//bfree(file);
-	}
-	*/
 
 	void LoadData(obs_data_t *save_data)
 	{
@@ -218,15 +158,15 @@ public:
 		obs_source_t *source = obs_sceneitem_get_source(item);
 		const char *name = obs_source_get_name(source);
 		blog(LOG_INFO, "Removing: %s", name);
+		obs_sceneitem_t *test = item;
 		if (toplayout) {
-			obs_sceneitem_t *test = item;
 			for (size_t i = 0; i < toplayout->count(); i++) {
 				QWidget *button = toplayout->itemAt(i)->widget();
 				QVariant val = button->property("scene_item");
 				obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
 				if (buttonitem == test) {
 					delete button;
-					break;
+					i--;
 				}
 			}
 			blog(LOG_INFO, "Removing Button: %s", name);
@@ -447,12 +387,23 @@ public:
 	{
 		_customgui = new QWidget();
 		setWidget(_customgui);
+		setFeatures(AllDockWidgetFeatures);
+		setAllowedAreas(Qt::DockWidgetArea::AllDockWidgetAreas);
+		setObjectName("layerView");
+		setWindowTitle("Layer View");
+
+		QMainWindow *app = (QMainWindow*)obs_frontend_get_main_window();
+		if (app)
+			app->addDockWidget(Qt::BottomDockWidgetArea, this);
+		else
+			setFloating(true);
 	}
 
 	~OBSLayerView()
 	{
 		if (saved)
 			obs_data_release(saved);
+		layer_view = nullptr;
 	}
 
 	void UpdateScene()
