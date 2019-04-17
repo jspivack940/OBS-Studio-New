@@ -35,13 +35,6 @@
 #define OPT_DYN_BITRATE "DynamicBitrate"
 #define CONGESTION_THRESHOLD 700000 // in microsec, 700 ms = 100% congestion
 
-enum dynamicBitrateState {
-	BITRATE_EQUAL_INITIAL_BITRATE,
-	BITRATE_SWITCHING_DOWN, // decreasing bitrate due to congestion
-	BITRATE_SWITCHING_STATIONARY, // bitrate unchanged; bitrate < initial bitrate
-	BITRATE_SWITCHING_UP // increasing bitrate due to congestion clearing
-};
-
 struct ffmpeg_cfg {
 	const char         *url;
 	const char         *format_name;
@@ -82,6 +75,23 @@ struct ffmpeg_data {
 	int                frame_size;
 
 	uint64_t           start_timestamp;
+
+	int64_t            total_samples[MAX_AUDIO_MIXES];
+	uint32_t           audio_samplerate;
+	enum audio_format  audio_format;
+	size_t             audio_planes;
+	size_t             audio_size;
+	int                num_audio_streams;
+
+	/* audio_tracks is a bitmask storing the indices of the mixes */
+	int                audio_tracks;
+	struct circlebuf   excess_frames[MAX_AUDIO_MIXES][MAX_AV_PLANES];
+	uint8_t            *samples[MAX_AUDIO_MIXES][MAX_AV_PLANES];
+	AVFrame            *aframe[MAX_AUDIO_MIXES];
+
+	struct ffmpeg_cfg  config;
+
+	bool               initialized;
 };
 
 struct ffmpeg_output {
