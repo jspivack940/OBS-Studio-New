@@ -14,14 +14,10 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QCursor>
-
-struct obs_layeritem_t {
-	DARRAY(obs_sceneitem_t*) items;
-};
-
-struct obs_layers_t {
-	DARRAY(obs_layeritem_t*) layers;
-};
+#include <QMouseEvent>
+#include <QDrag>
+#include <QMimeData>
+#include <QApplication>
 
 static void saveload_callback(obs_data_t *save_data, bool saving, void *vptr);
 static void signal_callback_add(void *vptr, calldata_t *cbdata);
@@ -34,9 +30,90 @@ const char *sceneitem_get_name(obs_sceneitem_t *item)
 	return obs_source_get_name(source);
 }
 
+class DraggableButton;
 class OBSLayerView;
-
 static OBSLayerView *layer_view = nullptr;
+
+class DraggableButton : public QPushButton {
+	QPoint pressCoord;
+	QPoint moveCoord;
+protected:
+	void mousePressEvent(QMouseEvent *e) override
+	{
+		if (e->button() == Qt::LeftButton) {
+			pressCoord = e->globalPos();
+			moveCoord = e->globalPos();
+		} else {
+			pressCoord = {};
+			moveCoord = {};
+		}
+		QPushButton::mousePressEvent(e);
+	};
+
+	void mouseMoveEvent(QMouseEvent *e) override
+	{
+		if (e->button() == Qt::LeftButton)
+			moveCoord = e->globalPos();
+		else
+			moveCoord = {};
+
+		QPoint diff = e->globalPos() - pressCoord;
+		if (diff.manhattanLength() >= QApplication::startDragDistance()) {
+			QDrag *drag = new QDrag(this);
+			QMimeData *mimeData = new QMimeData;
+			//mimeData->setText(this->text());
+			drag->setMimeData(mimeData);
+			//drag->setPixmap(iconPixmap);
+
+			Qt::DropAction dropAction = drag->exec(Qt::MoveAction);
+			if (dropAction == Qt::DropAction::IgnoreAction)
+				QPushButton::mouseMoveEvent(e);
+			else
+				e->ignore();
+			return;
+		}
+
+		QPushButton::mouseMoveEvent(e);
+	}
+
+	void mouseReleaseEvent(QMouseEvent *e) override
+	{
+		/*
+		QPoint diff = e->globalPos() - pressCoord;
+		if (diff.manhattanLength() > 3) {
+			e->ignore();
+			return;
+		}
+		*/
+		QPushButton::mouseReleaseEvent(e);
+	}
+
+	void dropEvent(QDropEvent *e) override
+	{
+		if (e->source() == this || e->proposedAction() != Qt::MoveAction)
+			return;
+		/*
+		if (layer_view) {
+			QObject *btn = e->source();
+			QVariant val = btn->property("scene_item");
+			obs_sceneitem_t *item = (obs_sceneitem_t*)val.toULongLong();
+			QVariant layer = this->property("layer");
+			layer_view->AddItemToLayer(item, layer.toULongLong());
+		}
+		*/
+		e->acceptProposedAction();
+	}
+public:
+	DraggableButton(const QString &text, QWidget *parent = nullptr)
+		: QPushButton(text, parent)
+	{
+		setAcceptDrops(true);
+	};
+
+	~DraggableButton()
+	{
+	};
+};
 
 class OBSLayerView : public QDockWidget {
 private:
@@ -46,6 +123,7 @@ private:
 	std::vector<obs_sceneitem_t *> _currentItems;
 
 	std::vector<std::vector<obs_sceneitem_t*>> _layers;
+	std::vector<std::vector<OBSWeakSource>> _weaklayers;
 	
 	QFormLayout *_form = nullptr;
 	std::vector<size_t> _used;
@@ -54,31 +132,28 @@ private:
 	obs_data_t *saved = nullptr;
 	std::vector<std::vector<std::string>> _layersinfo;
 	bool loaded = false;
+protected:
+	
 public:
 	void CompleteLoad(std::vector<obs_sceneitem_t*> items)
 	{
 		for (obs_sceneitem_t *item : items) {
 			size_t index = ItemInLayer(item);
 			std::string name = sceneitem_get_name(item);
-			if (name.empty())
+			if (name.empty() || index < _layers.size())
 				continue;
-			if (index < _layers.size()) {
-				blog(LOG_INFO, "%s already in layer %zu", name.c_str(), index);
-				continue;
-			}
 			for (size_t i = 0; i < _layersinfo.size(); i++) {
 				std::vector<std::string> names = _layersinfo[i];
 				for (size_t j = 0; j < names.size(); j++) {
 					if (name == names[j]) {
+						_layers.reserve(i + 1);
 						while (_layers.size() < (i+1))
 							_layers.push_back({});
 						_layers[i].push_back(item);
-						blog(LOG_INFO, "%s in new layer", name.c_str(), _layers.size());
 					}
 				}
 			}
 		}
-		blog(LOG_INFO, "Finished Loading");
 	}
 
 	void LoadData(obs_data_t *save_data)
@@ -134,11 +209,9 @@ public:
 
 	void AddSceneItem(OBSSceneItem item)
 	{
-		//CompleteLoad({item});
 		obs_sceneitem_t *itm = item;
 		obs_source_t *source = obs_sceneitem_get_source(item);
 		const char *name = obs_source_get_name(source);
-		blog(LOG_INFO, "Adding: %s", name);
 		if (toplayout) {
 			QString qname(name);
 			QPushButton *button = new QPushButton(qname);
@@ -147,20 +220,16 @@ public:
 			connect(button, &QPushButton::clicked, this, &OBSLayerView::MenuDropDown);
 			/*Connect Button*/
 			toplayout->addWidget(button);
-			blog(LOG_INFO, "Adding Button: %s", name);
 			update();
-			repaint();
+			//repaint();
 		}
 	}
 
 	void RemoveSceneItem(OBSSceneItem item)
 	{
-		obs_source_t *source = obs_sceneitem_get_source(item);
-		const char *name = obs_source_get_name(source);
-		blog(LOG_INFO, "Removing: %s", name);
 		obs_sceneitem_t *test = item;
 		if (toplayout) {
-			for (size_t i = 0; i < toplayout->count(); i++) {
+			for (int i = 0; i < toplayout->count(); i++) {
 				QWidget *button = toplayout->itemAt(i)->widget();
 				QVariant val = button->property("scene_item");
 				obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
@@ -169,12 +238,11 @@ public:
 					i--;
 				}
 			}
-			blog(LOG_INFO, "Removing Button: %s", name);
 		}
 		RemoveFromAllLayers(item);
 
 		update();
-		repaint();
+		//repaint();
 	}
 
 	void RemoveFromAllLayers(OBSSceneItem item)
@@ -185,13 +253,13 @@ public:
 				return item == it;
 			}), _layers[i].end());
 
-			for (size_t k = 1; k < _form->count(); k++) {
+			for (int k = 1; k < _form->count(); k++) {
 				QLayoutItem *layoutitem = _form->itemAt(k);
 				if (!layoutitem)
 					continue;
 				QHBoxLayout *layerlayout = (QHBoxLayout*)layoutitem->layout();
 
-				for (size_t j = 0; j < layerlayout->count(); j++) {
+				for (int j = 0; j < layerlayout->count(); j++) {
 					QWidget *widget = layerlayout->itemAt(j)->widget();
 					QVariant val = widget->property("scene_item");
 					obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
@@ -219,17 +287,8 @@ public:
 		}), _layers.end());
 		*/
 	}
-public slots:
-	void AddToLayer()
+	void AddItemToLayer(obs_sceneitem_t *buttonitem, size_t index)
 	{
-		QObject *action = sender();
-		QVariant val = action->property("scene_item");
-		obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
-		obs_source_t *src = obs_sceneitem_get_source(buttonitem);
-		const char *n = obs_source_get_name(src);
-		QVariant layerindex = action->property("layer");
-		size_t index = layerindex.toULongLong();
-
 		RemoveFromAllLayers(buttonitem);
 		if (index >= _layers.size()) {
 			index = _layers.size();
@@ -240,20 +299,20 @@ public slots:
 			obs_source_t *source = obs_sceneitem_get_source(buttonitem);
 			const char *name = obs_source_get_name(source);
 			QString qname(name);
-			QPushButton *button = new QPushButton(qname);
+			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)buttonitem);
 			button->setProperty("scene_item", val);
 
-			connect(button, &QPushButton::clicked, this, &OBSLayerView::SwitchViewable);
+			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
 			layerlayout->addWidget(button);
 			_form->addRow(layerlayout);
 		} else {
 			_layers[index].push_back(buttonitem);
 			QHBoxLayout *layerlayout = nullptr;
-			for (size_t i = 0; i < _form->count(); i++) {
+			for (int i = 1; i < _form->count(); i++) {
 				QLayoutItem *layoutitem = _form->itemAt(i);
-				if (layoutitem)
+				if (!layoutitem)
 					continue;
 				QHBoxLayout *hbox = (QHBoxLayout*)layoutitem->layout();
 				QVariant val = hbox->property("layer");
@@ -271,29 +330,47 @@ public slots:
 			obs_source_t *source = obs_sceneitem_get_source(buttonitem);
 			const char *name = obs_source_get_name(source);
 			QString qname(name);
-			QPushButton *button = new QPushButton(qname);
+			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)buttonitem);
 			button->setProperty("scene_item", val);
 
-			connect(button, &QPushButton::clicked, this, &OBSLayerView::SwitchViewable);
+			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
 			layerlayout->addWidget(button);
 		}
 
 		update();
-		repaint();
+	}
+
+public slots:
+	void RemoveFromLayers()
+	{
+		QObject *action = sender();
+		QVariant val = action->property("scene_item");
+		obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
+		RemoveFromAllLayers(buttonitem);
+
+		update();
+		//repaint();
+	}
+
+	void AddToLayer()
+	{
+		QObject *action = sender();
+		QVariant val = action->property("scene_item");
+		obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
+		QVariant layerindex = action->property("layer");
+		size_t index = layerindex.toULongLong();
+
+		AddItemToLayer(buttonitem, index);
 	}
 
 	void MenuDropDown()
 	{
 		QObject *btn = sender();
-		OBSLayerView *view = this;
 		QVariant val = btn->property("scene_item");
 		obs_sceneitem_t *buttonitem = (obs_sceneitem_t*)val.toULongLong();
-		obs_source_t *src = obs_sceneitem_get_source(buttonitem);
-		const char *n = obs_source_get_name(src);
-
-		blog(LOG_INFO, "button clicked: %s", n);
+		size_t index = ItemInLayer(buttonitem);
 
 		QMenu popup;
 
@@ -304,12 +381,19 @@ public slots:
 			connect(addToLayer, &QAction::triggered, this, &OBSLayerView::AddToLayer);
 			popup.addAction(addToLayer);
 		}
+
 		QAction addToNew("+", this);
 		addToNew.setProperty("scene_item", val);
 		addToNew.setProperty("layer", -1);
+
+		QAction removeItem("-", this);
+		removeItem.setProperty("scene_item", val);
+
 		connect(&addToNew, &QAction::triggered, this, &OBSLayerView::AddToLayer);
+		connect(&removeItem, &QAction::triggered, this, &OBSLayerView::RemoveFromLayers);
 		popup.addAction(&addToNew);
-		
+		if (index < _layers.size())
+			popup.addAction(&removeItem);
 		popup.exec(QCursor::pos());
 	}
 
@@ -321,24 +405,24 @@ public slots:
 		obs_source_t *src = obs_sceneitem_get_source(buttonitem);
 		const char *n = obs_source_get_name(src);
 
-		blog(LOG_INFO, "button clicked: %s", n);
-
 		size_t index = ItemInLayer(buttonitem);
-		QLayoutItem *layoutitem = _form->itemAt(index + 1);
+		QLayoutItem *layoutitem = _form->itemAt((int)index + 1);
 		if (!layoutitem)
 			return;
 		QHBoxLayout *layout = (QHBoxLayout *)layoutitem->layout();
-		for (size_t i = 0; i < layout->count(); i++) {
+		for (int i = 0; i < layout->count(); i++) {
 			QWidget *button = layout->itemAt(i)->widget();
 			QVariant val = button->property("scene_item");
 			obs_sceneitem_t *btnitem = (obs_sceneitem_t*)val.toULongLong();
-			obs_source_t *src1 = obs_sceneitem_get_source(btnitem);
-			const char *n1 = obs_source_get_name(src1);
-			//blog(LOG_INFO, "item: %s vs %s", n, n1);
 			obs_sceneitem_set_visible(btnitem, btnitem == buttonitem);
 		}
 	}
 public:
+	void closeEvent(QCloseEvent*)
+	{
+		obs_frontend_save();
+	}
+
 	void AddItem(obs_sceneitem_t *item)
 	{
 		obs_sceneitem_addref(item);
@@ -347,7 +431,6 @@ public:
 
 	void UseLayer(size_t index)
 	{
-		blog(LOG_INFO, "Using Layer: %zu", index);
 		for (size_t usedindex : _used) {
 			if (index == usedindex)
 				return;
@@ -360,11 +443,11 @@ public:
 			obs_source_t *source = obs_sceneitem_get_source(item);
 			const char *name = obs_source_get_name(source);
 			QString qname(name);
-			QPushButton *button = new QPushButton(qname);
+			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)item);
 			button->setProperty("scene_item", val);
-
-			connect(button, &QPushButton::clicked, this, &OBSLayerView::SwitchViewable);
+			
+			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
 			layerlayout->addWidget(button);
 		}
@@ -379,7 +462,7 @@ public:
 					return i;
 			}
 		}
-		return -1;
+		return SIZE_MAX;
 	}
 
 	OBSLayerView(QWidget *parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags())
@@ -401,6 +484,14 @@ public:
 
 	~OBSLayerView()
 	{
+		for (obs_sceneitem_t *item : _currentItems)
+			obs_sceneitem_release(item);
+
+		_currentItems.clear();
+
+		if (_currentSceneSource)
+			obs_source_release(_currentSceneSource);
+
 		if (saved)
 			obs_data_release(saved);
 		layer_view = nullptr;
@@ -408,7 +499,6 @@ public:
 
 	void UpdateScene()
 	{
-		blog(LOG_INFO, "Changed");
 		/* Get the current scene we're working w/ */
 		if (_currentSceneSource)
 			obs_source_release(_currentSceneSource);
@@ -418,7 +508,7 @@ public:
 			obs_sceneitem_release(item);
 
 		_currentItems.clear();
-		obs_scene_enum_items(_currentScene, listSceneItems, this);
+		obs_scene_enum_items(_currentScene, listSceneItems, nullptr);
 
 		CompleteLoad(_currentItems);
 
@@ -437,7 +527,6 @@ public:
 		for (obs_sceneitem_t *item : _currentItems) {
 			obs_source_t *source = obs_sceneitem_get_source(item);
 			const char *name = obs_source_get_name(source);
-			blog(LOG_INFO, "Adding Button: %s", name);
 			QString qname(name);
 			QPushButton *button = new QPushButton(qname);
 			connect(button, &QPushButton::clicked, this, &OBSLayerView::MenuDropDown);
@@ -445,7 +534,6 @@ public:
 			QVariant val((uint64_t)item);
 			button->setProperty("scene_item", val);
 			button->setVisible(true);
-			/*Connect Button*/
 			toplayout->addWidget(button);
 		}
 		_form->addRow(toplayout);
@@ -457,6 +545,6 @@ public:
 		}
 
 		update();
-		repaint();
+		//repaint();
 	}
 };
