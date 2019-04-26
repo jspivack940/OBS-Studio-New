@@ -112,14 +112,11 @@ static bool button_drag_callback(QDropEvent *e, DraggableButton *btn)
 			blog(LOG_WARNING, "missing layer");
 			return false;
 		}
-		btn->setProperty("layer", layer);
-		/*
-		layer_view->AddItemToLayer((obs_sceneitem_t*)scene_item.toULongLong(),
-				layer.toULongLong());
-				*/
+
 		QTimer::singleShot(50, [=]() {
-			layer_view->AddItemToLayer((obs_sceneitem_t*)scene_item.toULongLong(),
-				layer.toULongLong());
+			if(layer_view)
+				layer_view->AddItemToLayer((obs_sceneitem_t*)scene_item.toULongLong(),
+					layer.toULongLong());
 		});
 		return true;
 	}
