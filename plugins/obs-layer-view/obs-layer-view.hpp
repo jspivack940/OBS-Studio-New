@@ -17,12 +17,18 @@
 #include <QMouseEvent>
 #include <QDrag>
 #include <QMimeData>
+#include <QTimer>
 #include <QApplication>
+
+class DraggableButton;
+class OBSLayerView;
+static OBSLayerView *layer_view = nullptr;
 
 static void saveload_callback(obs_data_t *save_data, bool saving, void *vptr);
 static void signal_callback_add(void *vptr, calldata_t *cbdata);
 static void signal_callback_remove(void *vptr, calldata_t *cbdata);
 static bool listSceneItems(obs_scene_t *scene, obs_sceneitem_t *item, void *vptr);
+static bool button_drag_callback(QDropEvent *e, DraggableButton *btn);
 
 const char *sceneitem_get_name(obs_sceneitem_t *item)
 {
@@ -30,13 +36,11 @@ const char *sceneitem_get_name(obs_sceneitem_t *item)
 	return obs_source_get_name(source);
 }
 
-class DraggableButton;
-class OBSLayerView;
-static OBSLayerView *layer_view = nullptr;
-
 class DraggableButton : public QPushButton {
+private:
 	QPoint pressCoord;
 	QPoint moveCoord;
+	bool(*callback)(QDropEvent *e, DraggableButton *btn) = nullptr;
 protected:
 	void mousePressEvent(QMouseEvent *e) override
 	{
@@ -66,10 +70,11 @@ protected:
 			//drag->setPixmap(iconPixmap);
 
 			Qt::DropAction dropAction = drag->exec(Qt::MoveAction);
-			if (dropAction == Qt::DropAction::IgnoreAction)
+			if (dropAction == Qt::DropAction::IgnoreAction) {
 				QPushButton::mouseMoveEvent(e);
-			else
+			} else {
 				e->ignore();
+			}
 			return;
 		}
 
@@ -78,29 +83,32 @@ protected:
 
 	void mouseReleaseEvent(QMouseEvent *e) override
 	{
-		/*
-		QPoint diff = e->globalPos() - pressCoord;
-		if (diff.manhattanLength() > 3) {
-			e->ignore();
-			return;
-		}
-		*/
 		QPushButton::mouseReleaseEvent(e);
 	}
 
-	void dropEvent(QDropEvent *e) override
+	void dragEnterEvent(QDragEnterEvent *e)
 	{
-		if (e->source() == this || e->proposedAction() != Qt::MoveAction)
+		setBackgroundRole(QPalette::Highlight);
+		e->acceptProposedAction();
+	}
+
+	void dragMoveEvent(QDragMoveEvent *e)
+	{
+		e->acceptProposedAction();
+	}
+
+	void dropEvent(QDropEvent *e)
+	{
+		if (e->source() == this || e->proposedAction() != Qt::MoveAction) {
+			e->ignore();
 			return;
-		/*
-		if (layer_view) {
-			QObject *btn = e->source();
-			QVariant val = btn->property("scene_item");
-			obs_sceneitem_t *item = (obs_sceneitem_t*)val.toULongLong();
-			QVariant layer = this->property("layer");
-			layer_view->AddItemToLayer(item, layer.toULongLong());
 		}
-		*/
+		if (callback) {
+			if (!callback(e, this)) {
+				e->ignore();
+				return;
+			}
+		}
 		e->acceptProposedAction();
 	}
 public:
@@ -113,6 +121,13 @@ public:
 	~DraggableButton()
 	{
 	};
+
+	void setCallback(bool(*cb)(QDropEvent *e, DraggableButton *btn) = nullptr)
+	{
+		blockSignals(true);
+		callback = cb;
+		blockSignals(false);
+	}
 };
 
 class OBSLayerView : public QDockWidget {
@@ -287,6 +302,7 @@ public:
 		}), _layers.end());
 		*/
 	}
+
 	void AddItemToLayer(obs_sceneitem_t *buttonitem, size_t index)
 	{
 		RemoveFromAllLayers(buttonitem);
@@ -302,7 +318,8 @@ public:
 			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)buttonitem);
 			button->setProperty("scene_item", val);
-
+			button->setProperty("layer", index);
+			button->setCallback(button_drag_callback);
 			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
 			layerlayout->addWidget(button);
@@ -333,6 +350,8 @@ public:
 			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)buttonitem);
 			button->setProperty("scene_item", val);
+			button->setProperty("layer", index);
+			button->setCallback(button_drag_callback);
 
 			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
@@ -446,7 +465,9 @@ public:
 			DraggableButton *button = new DraggableButton(qname);
 			QVariant val((uint64_t)item);
 			button->setProperty("scene_item", val);
-			
+			button->setProperty("layer", index);
+			button->setCallback(button_drag_callback);
+
 			connect(button, &DraggableButton::clicked, this, &OBSLayerView::SwitchViewable);
 			/*Connect Button*/
 			layerlayout->addWidget(button);

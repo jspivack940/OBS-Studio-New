@@ -97,9 +97,39 @@ static void saveload_callback(obs_data_t *save_data, bool saving, void *vptr)
 	}
 }
 
+static bool button_drag_callback(QDropEvent *e, DraggableButton *btn)
+{
+	if (layer_view) {
+		QObject *src = e->source();
+		if (!src)
+			return false;
+		QVariant scene_item = src->property("scene_item");
+		QVariant layer = btn->property("layer");
+		if (!scene_item.isValid()) {
+			blog(LOG_WARNING, "missing scene item");
+			return false;
+		} else if (!layer.isValid()) {
+			blog(LOG_WARNING, "missing layer");
+			return false;
+		}
+		btn->setProperty("layer", layer);
+		/*
+		layer_view->AddItemToLayer((obs_sceneitem_t*)scene_item.toULongLong(),
+				layer.toULongLong());
+				*/
+		QTimer::singleShot(50, [=]() {
+			layer_view->AddItemToLayer((obs_sceneitem_t*)scene_item.toULongLong(),
+				layer.toULongLong());
+		});
+		return true;
+	}
+	return false;
+}
+
 bool obs_module_load()
 {
-	QMainWindow *mainWindow = static_cast<QMainWindow*>(obs_frontend_get_main_window());
+	QMainWindow *mainWindow =
+		static_cast<QMainWindow*>(obs_frontend_get_main_window());
 
 	QAction *menu_action = (QAction*)obs_frontend_add_tools_menu_qaction(
 		obs_module_text("Layer View")
