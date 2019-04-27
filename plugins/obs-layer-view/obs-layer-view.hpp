@@ -234,6 +234,8 @@ public:
 		obs_data_array_t *layerarray = obs_data_array_create();
 		for (size_t i = 0; i < _layers.size(); i++) {
 			std::vector<obs_sceneitem_t*> layer = _layers[i];
+			if (!layer.size())
+				continue;
 			obs_data_t *layerdata = obs_data_create();
 			obs_data_array_t *itemarray = obs_data_array_create();
 
@@ -583,8 +585,8 @@ public:
 		_used.reserve(_layers.size());
 
 		toplayout = new QHBoxLayout();
-		QLabel *layers_label = new QLabel("Layers");
-		layers_label->setAlignment(Qt::AlignHCenter);
+		//QLabel *layers_label = new QLabel("Layers");
+		//layers_label->setAlignment(Qt::AlignHCenter);
 
 		for (obs_sceneitem_t *item : _currentItems) {
 			obs_source_t *source = obs_sceneitem_get_source(item);
@@ -599,7 +601,7 @@ public:
 			toplayout->addWidget(button);
 		}
 		_form->addRow(toplayout);
-		_form->addRow(layers_label);
+		_form->addRow(new QWidget());
 
 		for (obs_sceneitem_t *item : _currentItems) {
 			size_t index = ItemInLayer(item);
