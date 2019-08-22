@@ -337,6 +337,8 @@ public:
 					_device->getCurrentBufferSizeSamples());
 			if (!err.toStdString().empty()) {
 				blog(LOG_WARNING, "%s", err.toStdString().c_str());
+				listener->device_index = (uint64_t)_device;
+				listener->disconnect();
 				return;
 			}
 		}
