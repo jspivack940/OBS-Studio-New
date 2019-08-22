@@ -532,6 +532,7 @@ static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, o
 		obs_property_set_modified_callback(route[i], fill_out_channels_modified);
 		obs_property_set_visible(route[i], i < recorded_channels);
 	}
+	return true;
 }
 
 static void fill_out_devices(obs_property_t *prop)
