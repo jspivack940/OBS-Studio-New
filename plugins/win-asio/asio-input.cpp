@@ -502,6 +502,45 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 			break;
 		}
 	}
+	
+	AudioIODeviceType *asio_type = nullptr;
+	for (int i = 0; i < deviceTypes.size(); i++) {
+		if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
+			continue;
+		} else {
+			asio_type = deviceTypes[i];
+			break;
+		}
+	}
+
+	for (int j = 0; j < itemCount; j++) {
+		AudioIODevice *selected_device = nullptr;
+		std::string    name            = obs_property_list_item_string(list, j);
+		for (int i = 0; i < callbacks.size(); i++) {
+			AudioCB *      cb     = callbacks[i];
+			AudioIODevice *device = cb->getDevice();
+			std::string    n      = cb->getName();
+			if (n == name) {
+				if (!device && asio_type) {
+					String deviceName             = name.c_str();
+					device                        = asio_type->createDevice(deviceName, deviceName);
+					cb->getBuffer()->device_index = (uint64_t)device;
+					cb->setDevice(device, name.c_str());
+				}
+
+				selected_device = device;
+				break;
+			}
+		}
+
+		bool disable = selected_device == nullptr;
+		if (selected_device) {
+			StringArray in_chs  = selected_device->getInputChannelNames();
+			disable = in_chs.size() == 0;
+		}
+
+		obs_property_list_item_disable(list, j, disable);
+	}
 
 	if (!itemFound) {
 		obs_property_list_insert_string(list, 0, " ", curDeviceId);
@@ -619,6 +658,10 @@ bool obs_module_load(void)
 			bfree(name);
 			callbacks.push_back(cb);
 			buffers.push_back(buffer);
+
+			AudioIODevice *device       = deviceTypes[i]->createDevice(deviceNames[j], deviceNames[j]);
+			cb->getBuffer()->device_index = (uint64_t)device;
+			cb->setDevice(device, deviceNames[j].toStdString().c_str());
 		}
 	}
 
