@@ -65,6 +65,7 @@ public:
 
 	std::vector<short> unmuted_chs;
 	std::vector<short> muted_chs;
+	std::vector<short> tmp_muted_chs;
 	std::vector<long>  required_signals;
 
 	// signals
@@ -720,7 +721,7 @@ public:
 		if (!captureThread.Valid())
 			captureThread = CreateThread(nullptr, 0, this->capture_thread, this, 0, nullptr);
 
-		listener->disconnect();
+		//listener->disconnect();
 		listener->buffer       = this;
 		listener->device_index = device_index;
 		listener->isASIOActive = true;
