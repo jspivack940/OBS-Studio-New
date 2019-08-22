@@ -331,8 +331,9 @@ public:
 	{
 		disconnect();
 		// free resources?
-		if (all_prepped) {
+		if (events_prepped)
 			delete receive_signals;
+		if (circle_buffer_prepped) {
 			for (int i = 0; i < buffer_count; i++) {
 				device_source_audio* _source_audio = get_source_audio(i);
 				int                  input_chs     = _source_audio->input_chs;
