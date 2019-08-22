@@ -52,9 +52,9 @@ public:
 	device_buffer* buffer = nullptr;
 
 	/*asio device and info */
-	char*    device_name;
-	uint64_t device_index;
-	uint64_t first_ts;
+	char*          device_name;
+	uint64_t       device_index;
+	uint64_t       first_ts;
 	speaker_layout layout;
 
 	/* channels info */
@@ -151,18 +151,20 @@ public:
 			silent_buffer      = (uint8_t*)bzalloc(buffer_size);
 			silent_buffer_size = buffer_size;
 		}
-
-		if (unmuted_chs.size() == 0)
-			return false;
-
-		int channels = (int)get_audio_channels(layout);
+			
+		int  channels = (int)get_audio_channels(layout);
+		bool muted    = true;
 		for (int i = 0; i < channels; i++) {
-			if (route[i] >= 0 && route[i] < asio_buffer->input_chs)
+			if (route[i] >= 0 && route[i] < asio_buffer->input_chs) {
 				out.data[i] = asio_buffer->data[route[i]];
-			else
+				muted       = false;
+			} else {
 				out.data[i] = silent_buffer;
-		}
-
+			}
+		}	
+		if (muted)
+			return false;
+	
 		out.speakers = layout;
 
 		obs_source_output_audio(source, &out);
@@ -533,6 +535,83 @@ public:
 		// ResetEvent(all_recieved_signal_2);
 	}
 
+	void write_dual_buffer_planar(const void* buffer, const void* buffer2, int in, int out, size_t samples,
+			uint64_t timestamp_on_callback)
+	{
+		if (!all_prepped) {
+			blog(LOG_INFO, "%s device %i is not prepared", __FUNCTION__, device_index);
+			return;
+		}
+		int byte_depth = bytedepth_format(format);
+		if (!byte_depth)
+			return;
+		device_source_audio* _source_audio = get_writeable_source_audio();
+		if (!_source_audio)
+			return;
+
+		SetEvent(all_recieved_signal);
+
+		uint8_t** input_buffer   = (uint8_t**)buffer;
+		uint8_t** output_buffer  = (uint8_t**)buffer2;
+		size_t    ch_buffer_size = samples * byte_depth;
+		if (ch_buffer_size > buffer_size) {
+			blog(LOG_WARNING, "%s device needs to reallocate memory %ui to %ui", __FUNCTION__, buffer_size,
+					2 * ch_buffer_size);
+			frames = (uint32_t)(ch_buffer_size / byte_depth);
+			re_prep_buffers();
+		}
+
+		audio_format planar_format = get_planar_format(format);
+		// deinterleave directly into buffer (planar)
+		size_t in_idx  = in < device_options.channel_count ? in : device_options.channel_count;
+		size_t out_idx = (in_idx + out) < device_options.channel_count ? (in_idx + out)
+									       : device_options.channel_count;
+
+		size_t j = 0;
+		if (input_buffer) {
+			for (j = 0; j < in_idx; j++) {
+				if (input_buffer[j])
+					memcpy(_source_audio->data[j], input_buffer[j], ch_buffer_size);
+				else
+					memset(_source_audio->data[j], 0, ch_buffer_size);
+			}
+		} else {
+			for (j = 0; j < in_idx; j++) {
+				memset(_source_audio->data[j], 0, ch_buffer_size);
+			}
+		}
+
+		if (output_buffer) {
+			size_t jj = 0;
+			for (; j < out_idx; j++) {
+				if (output_buffer[jj])
+					memcpy(_source_audio->data[j], output_buffer[jj], ch_buffer_size);
+				else
+					memset(_source_audio->data[j], 0, ch_buffer_size);
+				jj++;
+			}
+		} else {
+			for (; j < out_idx; j++) {
+				memset(_source_audio->data[j], 0, ch_buffer_size);
+			}
+		}
+		// 0 out remaining
+		for (; j < device_options.channel_count; j++) {
+			memset(_source_audio->data[j], 0, ch_buffer_size);
+		}
+
+		_source_audio->format          = planar_format;
+		_source_audio->frames          = (uint32_t)samples;
+		_source_audio->input_chs       = device_options.channel_count;
+		_source_audio->samples_per_sec = samples_per_sec;
+		_source_audio->timestamp = _source_audio->timestamp = timestamp_on_callback -
+				((_source_audio->frames * NSEC_PER_SEC) / _source_audio->samples_per_sec);
+
+		write_index++;
+		write_index = write_index % buffer_count;
+		ResetEvent(all_recieved_signal);
+	}
+
 	static DWORD WINAPI capture_thread(void* data)
 	{
 		device_buffer* device = static_cast<device_buffer*>(data);
@@ -622,7 +701,7 @@ public:
 		if (captureThread.Valid()) {
 			DWORD  waitResult;
 			HANDLE signals_1[2] = {all_recieved_signal, stop_listening_signal};
-			waitResult = WaitForMultipleObjects(2, signals_1, false, INFINITE);
+			waitResult          = WaitForMultipleObjects(2, signals_1, false, INFINITE);
 		}
 	}
 	// adds a listener thread between an asio_listener object and this device
