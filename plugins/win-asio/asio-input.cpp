@@ -32,7 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <windows.h>
 #include "circle-buffer.h"
-#include "JuceLibraryCode/JuceHeader.h"
+#include <JuceHeader.h>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
@@ -42,8 +42,8 @@ OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
 static void                         fill_out_devices(obs_property_t *prop);
 static std::vector<asio_listener *> listener_list;
 
-static juce::OwnedArray<juce::AudioIODeviceType> deviceTypes;
-static juce::AudioDeviceManager                  manager;
+static juce::AudioIODeviceType *deviceTypeAsio = AudioIODeviceType::createAudioIODeviceType_ASIO();
+
 class ASIOPlugin;
 class AudioCB;
 
@@ -172,7 +172,6 @@ public:
 		device_buffer_options opts;
 		opts.buffer_size   = device->getCurrentBufferSizeSamples();
 		opts.channel_count = (uint32_t)device->getActiveInputChannels().countNumberOfSetBits();
-		//+ (uint32_t)device->getActiveOutputChannels().countNumberOfSetBits();
 		opts.name = device->getName().toStdString().c_str();
 		_buffer->set_audio_format(AUDIO_FORMAT_FLOAT_PLANAR);
 		_buffer->update_sample_rate((uint32_t)device->getCurrentSampleRate());
@@ -284,19 +283,6 @@ public:
 		AudioIODevice *previous_device = (AudioIODevice *)listener->device_index;
 		device_buffer *previous_buffer = listener->buffer;
 
-		AudioIODeviceType *asio_type = nullptr;
-		for (int i = 0; i < deviceTypes.size(); i++) {
-			if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
-				continue;
-			} else {
-				asio_type = deviceTypes[i];
-				break;
-			}
-		}
-		if (!asio_type) {
-			return;
-		}
-
 		AudioIODevice *selected_device = nullptr;
 		for (int i = 0; i < callbacks.size(); i++) {
 			AudioCB *      cb     = callbacks[i];
@@ -304,12 +290,11 @@ public:
 			std::string    n      = cb->getName();
 			if (n == name) {
 				if (!device) {
-					String deviceName             = name.c_str();
-					device                        = asio_type->createDevice(deviceName, deviceName);
+					String deviceName = name.c_str();
+					device = deviceTypeAsio->createDevice(deviceName, deviceName);
 					cb->getBuffer()->device_index = (uint64_t)device;
 					cb->setDevice(device, name.c_str());
 				}
-
 				selected_device = device;
 				_device         = device;
 				callback        = cb;
@@ -370,14 +355,6 @@ public:
 		} else {
 			listener->disconnect();
 		}
-		/*
-		if (previous_buffer) {
-			int listeners = previous_buffer->get_listener_count();
-			if (listeners == 0 && previous_device && (previous_device != _device)) {
-				previous_device->stop();
-			}
-		}
-		*/
 	}
 
 	static void Update(void *vptr, obs_data_t *settings)
@@ -427,30 +404,18 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	AudioCB *      _callback = nullptr;
 	AudioIODevice *_device   = nullptr;
 
-	AudioIODeviceType *asio_type = nullptr;
-	for (int i = 0; i < deviceTypes.size(); i++) {
-		if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
-			continue;
-		} else {
-			asio_type = deviceTypes[i];
-			break;
-		}
-	}
-	if (!asio_type) {
-		return false;
-	}
 	for (int i = 0; i < callbacks.size(); i++) {
-		AudioCB *      cb     = callbacks[i];
+		AudioCB *      cb = callbacks[i];
 		AudioIODevice *device = cb->getDevice();
-		std::string    n      = cb->getName();
+		std::string    n = cb->getName();
 		if (n == name) {
 			if (!device) {
-				String deviceName             = name.c_str();
-				device                        = asio_type->createDevice(deviceName, deviceName);
+				String deviceName = name.c_str();
+				device = deviceTypeAsio->createDevice(deviceName, deviceName);
 				cb->getBuffer()->device_index = (uint64_t)device;
 				cb->setDevice(device, name.c_str());
 			}
-			_device   = device;
+			_device = device;
 			_callback = cb;
 			break;
 		}
@@ -469,13 +434,7 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 
 	for (; i < input_channels; i++)
 		obs_property_list_add_int(list, in_names[i].toStdString().c_str(), i);
-	/*
-	int o = 0;
-	juce::StringArray out_names      = _device->getOutputChannelNames();
-	int               output_channels = out_names.size();
-	for (; o < output_channels; o++)
-		obs_property_list_add_int(list, out_names[o].toStdString().c_str(), i++);
-		*/
+
 	return true;
 }
 
@@ -501,46 +460,7 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 			itemFound = true;
 			break;
 		}
-	}
-	
-	AudioIODeviceType *asio_type = nullptr;
-	for (int i = 0; i < deviceTypes.size(); i++) {
-		if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
-			continue;
-		} else {
-			asio_type = deviceTypes[i];
-			break;
-		}
-	}
-
-	for (int j = 0; j < itemCount; j++) {
-		AudioIODevice *selected_device = nullptr;
-		std::string    name            = obs_property_list_item_string(list, j);
-		for (int i = 0; i < callbacks.size(); i++) {
-			AudioCB *      cb     = callbacks[i];
-			AudioIODevice *device = cb->getDevice();
-			std::string    n      = cb->getName();
-			if (n == name) {
-				if (!device && asio_type) {
-					String deviceName             = name.c_str();
-					device                        = asio_type->createDevice(deviceName, deviceName);
-					cb->getBuffer()->device_index = (uint64_t)device;
-					cb->setDevice(device, name.c_str());
-				}
-
-				selected_device = device;
-				break;
-			}
-		}
-
-		bool disable = selected_device == nullptr;
-		if (selected_device) {
-			StringArray in_chs  = selected_device->getInputChannelNames();
-			disable = in_chs.size() == 0;
-		}
-
-		obs_property_list_item_disable(list, j, disable);
-	}
+	}	
 
 	if (!itemFound) {
 		obs_property_list_insert_string(list, 0, " ", curDeviceId);
@@ -576,21 +496,8 @@ static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, o
 
 static void fill_out_devices(obs_property_t *prop)
 {
-	AudioIODeviceType *asio_type = nullptr;
-	for (int i = 0; i < deviceTypes.size(); i++) {
-		if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
-			continue;
-		} else {
-			deviceTypes[i]->scanForDevices();
-			asio_type = deviceTypes[i];
-			break;
-		}
-	}
 
-	if (!asio_type)
-		return;
-
-	StringArray deviceNames(asio_type->getDeviceNames());
+	StringArray deviceNames(deviceTypeAsio->getDeviceNames());
 	for (int j = 0; j < deviceNames.size(); j++) {
 		bool found = false;
 		for (int i = 0; i < callbacks.size(); i++) {
@@ -635,34 +542,18 @@ bool obs_module_load(void)
 	obs_audio_info aoi;
 	obs_get_audio_info(&aoi);
 
-	manager.initialise(256, 256, nullptr, false);
-	AudioDeviceManager::AudioDeviceSetup setup = manager.getAudioDeviceSetup();
-
-	manager.createAudioDeviceTypes(deviceTypes);
-
 	MessageManager::getInstance();
 
-	for (int i = 0; i < deviceTypes.size(); i++) {
-		if (deviceTypes[i]->getTypeName().toStdString() != "ASIO") {
-			deviceTypes.remove(i, true);
-			i--;
-			continue;
-		}
-		deviceTypes[i]->scanForDevices();
-		StringArray deviceNames(deviceTypes[i]->getDeviceNames());
-		for (int j = 0; j < deviceNames.size(); j++) {
-			device_buffer *buffer       = new device_buffer();
-			char *         name         = bstrdup(deviceNames[j].toStdString().c_str());
-			buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
-			AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
-			bfree(name);
-			callbacks.push_back(cb);
-			buffers.push_back(buffer);
-
-			AudioIODevice *device       = deviceTypes[i]->createDevice(deviceNames[j], deviceNames[j]);
-			cb->getBuffer()->device_index = (uint64_t)device;
-			cb->setDevice(device, deviceNames[j].toStdString().c_str());
-		}
+	deviceTypeAsio->scanForDevices();
+	StringArray deviceNames(deviceTypeAsio->getDeviceNames());
+	for (int j = 0; j < deviceNames.size(); j++) {
+		device_buffer *buffer       = new device_buffer();
+		char *         name         = bstrdup(deviceNames[j].toStdString().c_str());
+		buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
+		AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
+		bfree(name);
+		callbacks.push_back(cb);
+		buffers.push_back(buffer);
 	}
 
 	struct obs_source_info asio_input_capture = {};
@@ -698,8 +589,6 @@ void obs_module_unload(void)
 		delete buffer;
 		delete cb;
 	}
-
-	deviceTypes.clear(true);
 
 	MessageManager *m = MessageManager::getInstanceWithoutCreating();
 	if (m) {
