@@ -171,6 +171,7 @@ public:
 		device_buffer_options opts;
 		opts.buffer_size   = device->getCurrentBufferSizeSamples();
 		opts.channel_count = (uint32_t)device->getActiveInputChannels().countNumberOfSetBits();
+			//+ (uint32_t)device->getActiveOutputChannels().countNumberOfSetBits();
 		opts.name          = device->getName().toStdString().c_str();
 		_buffer->set_audio_format(AUDIO_FORMAT_FLOAT_PLANAR);
 		_buffer->update_sample_rate((uint32_t)device->getCurrentSampleRate());
@@ -241,7 +242,6 @@ public:
 		obs_property_t *  route[MAX_AUDIO_CHANNELS];
 
 		props = obs_properties_create();
-		// obs_properties_set_flags(props, OBS_PROPERTIES_DEFER_UPDATE);
 		devices = obs_properties_add_list(props, "device_id", obs_module_text("Device"), OBS_COMBO_TYPE_LIST,
 				OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback(devices, asio_device_changed);
@@ -262,7 +262,6 @@ public:
 					route[i], obs_module_text(("Route.Desc." + std::to_string(i)).c_str()));
 		}
 
-		// obs_properties_add_button(props, "ctrl", obs_module_text("Control Panel"), d);
 		panel = obs_properties_add_button2(props, "ctrl", obs_module_text("Control Panel"), show_panel, vptr);
 		ASIOPlugin *   plugin = static_cast<ASIOPlugin *>(vptr);
 		AudioIODevice *device = nullptr;
@@ -310,7 +309,6 @@ public:
 				break;
 			}
 		}
-
 
 		if (_device == nullptr)
 			return;
@@ -431,7 +429,6 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 		}
 	}
 
-
 	obs_property_list_clear(list);
 	obs_property_list_add_int(list, obs_module_text("Mute"), -1);
 
@@ -523,7 +520,6 @@ static void fill_out_devices(obs_property_t *prop)
 		if (!found) {
 			device_buffer *buffer = new device_buffer();
 			char *         name   = bstrdup(deviceNames[j].toStdString().c_str());
-			// buffer->device_index = (uint64_t)device;
 			buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
 			AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
 			bfree(name);
@@ -555,11 +551,10 @@ bool obs_module_load(void)
 	obs_audio_info aoi;
 	obs_get_audio_info(&aoi);
 
-	manager.initialise(256, 256, nullptr, true);
+	manager.initialise(256, 256, nullptr, false);
 	AudioDeviceManager::AudioDeviceSetup setup = manager.getAudioDeviceSetup();
 
 	manager.createAudioDeviceTypes(deviceTypes);
-	//manager.createAudioDeviceTypes(deviceTypes);
 
 	MessageManager::getInstance();
 
@@ -572,10 +567,8 @@ bool obs_module_load(void)
 		deviceTypes[i]->scanForDevices();
 		StringArray deviceNames(deviceTypes[i]->getDeviceNames());
 		for (int j = 0; j < deviceNames.size(); j++) {
-			// AudioIODevice *device = types[i]->createDevice(deviceNames[j], deviceNames[j]);
 			device_buffer *buffer = new device_buffer();
 			char *         name   = bstrdup(deviceNames[j].toStdString().c_str());
-			// buffer->device_index = (uint64_t)device;
 			buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
 			AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
 			bfree(name);
@@ -583,8 +576,6 @@ bool obs_module_load(void)
 			buffers.push_back(buffer);
 		}
 	}
-
-	//types.clear();
 
 	struct obs_source_info asio_input_capture = {};
 	asio_input_capture.id                     = "asio_input_capture";
@@ -605,7 +596,6 @@ void obs_module_unload(void)
 {
 	for (int i = 0; i < callbacks.size(); i++) {
 		AudioCB *      cb     = callbacks[i];
-		//juce::ScopedPointer<AudioIODevice> ptr;
 		AudioIODevice *device = cb->getDevice();
 		if (device) {
 			if (device->isPlaying())
