@@ -61,7 +61,7 @@ public:
 	DWORD input_channels;            // total number of input channels
 	DWORD output_channels;           // number of output channels of device (not used)
 	DWORD recorded_channels;         // number of channels passed from device (including muted) to OBS; is at most 8
-	long  route[MAX_AUDIO_CHANNELS]; // stores the channel re-ordering info
+	std::vector<long> route;
 
 	std::vector<short> unmuted_chs;
 	std::vector<short> muted_chs;
@@ -95,11 +95,11 @@ public:
 		return name;
 	};
 
-	asio_listener() : source(NULL), first_ts(0ULL), device_index(0ULL)
+	asio_listener(int channels) : source(NULL), first_ts(0ULL),
+		device_index(0ULL)
 	{
 		InitializeCriticalSection(&settings_mutex);
-
-		memset(&route[0], -1, sizeof(long) * 8);
+		route = std::vector<long>(channels, -1);
 
 		stop_listening_signal = CreateEvent(nullptr, true, false, nullptr);
 	}
@@ -170,6 +170,28 @@ public:
 
 		obs_source_output_audio(source, &out);
 		return true;
+	}
+
+	static std::vector<short> _get_muted_chs(std::vector<long> route_array)
+	{
+		std::vector<short> silent_chs;
+		silent_chs.reserve(route_array.size());
+		for (short i = 0; i < route_array.size(); i++) {
+			if (route_array[i] == -1)
+				silent_chs.push_back(i);
+		}
+		return silent_chs;
+	}
+
+	static std::vector<short> _get_unmuted_chs(std::vector<long> route_array)
+	{
+		std::vector<short> unmuted_chs;
+		unmuted_chs.reserve(route_array.size());
+		for (short i = 0; i < route_array.size(); i++) {
+			if (route_array[i] >= 0)
+				unmuted_chs.push_back(i);
+		}
+		return unmuted_chs;
 	}
 
 	static std::vector<short> _get_muted_chs(long route_array[])
@@ -629,7 +651,7 @@ public:
 
 		size_t read_index = device->write_index;
 		int    waitResult;
-		long   route[MAX_AUDIO_CHANNELS];
+		std::vector<long> route;
 
 		while (device->isBufferActive) {
 			waitResult = WaitForMultipleObjects(2, signals_1, false, INFINITE);
@@ -649,8 +671,7 @@ public:
 						} else if (!listeners[i]->isASIOActive) {
 							continue;
 						}
-						memcpy(&route[0], &listeners[i]->route[0],
-								MAX_AUDIO_CHANNELS * sizeof(long));
+						route = listeners[i]->route;
 						listeners[i]->render_audio(in, &route[0]);
 					}
 					read_index++;

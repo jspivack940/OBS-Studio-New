@@ -103,6 +103,21 @@ int get_obs_output_channels()
 	return (int)get_audio_channels(aoi.speakers);
 }
 
+int get_max_obs_channels()
+{
+	static int channels = 0;
+	if (channels > 0) {
+		return channels;
+	} else {
+		for (int i = 0; i < 1024; i++) {
+			int c = get_audio_channels((speaker_layout)i);
+			if (c > channels)
+				channels = c;
+		}
+		return channels;
+	}
+}
+
 static std::vector<speaker_layout> known_layouts = {
 		SPEAKERS_MONO,    /**< Channels: MONO */
 		SPEAKERS_STEREO,  /**< Channels: FL, FR */
@@ -208,7 +223,8 @@ public:
 
 	ASIOPlugin::ASIOPlugin(obs_data_t *settings, obs_source_t *source)
 	{
-		listener           = new asio_listener();
+		int max_channels   = get_max_obs_channels();
+		listener           = new asio_listener(max_channels);
 		listener->source   = source;
 		listener->first_ts = 0;
 		update(settings);
@@ -239,7 +255,8 @@ public:
 		obs_property_t *  devices;
 		obs_property_t *  format;
 		obs_property_t *  panel;
-		obs_property_t *  route[MAX_AUDIO_CHANNELS];
+		int                          max_channels = get_obs_output_channels();
+		std::vector<obs_property_t*> route(max_channels, nullptr);
 
 		props   = obs_properties_create();
 		devices = obs_properties_add_list(props, "device_id", obs_module_text("Device"), OBS_COMBO_TYPE_LIST,
@@ -255,7 +272,7 @@ public:
 		obs_property_set_modified_callback(format, asio_layout_changed);
 
 		unsigned int recorded_channels = get_obs_output_channels();
-		for (size_t i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+		for (size_t i = 0; i < max_channels; i++) {
 			route[i] = obs_properties_add_list(props, ("route " + std::to_string(i)).c_str(),
 					obs_module_text(("Route." + std::to_string(i)).c_str()), OBS_COMBO_TYPE_LIST,
 					OBS_COMBO_FORMAT_INT);
@@ -338,11 +355,12 @@ public:
 				listener->disconnect();
 
 			int recorded_channels = get_audio_channels(layout);
+			int max_channels      = get_max_obs_channels();
 			for (int i = 0; i < recorded_channels; i++) {
 				std::string route_str = "route " + std::to_string(i);
 				listener->route[i]    = (int)obs_data_get_int(settings, route_str.c_str());
 			}
-			for (int i = recorded_channels; i < MAX_AUDIO_CHANNELS; i++) {
+			for (int i = recorded_channels; i < max_channels; i++) {
 				listener->route[i]    = -1;
 			}
 
@@ -369,9 +387,13 @@ public:
 		struct obs_audio_info aoi;
 		obs_get_audio_info(&aoi);
 		int recorded_channels = get_audio_channels(aoi.speakers);
-
+		int max_channels      = get_max_obs_channels();
 		// default is muted channels
 		for (int i = 0; i < recorded_channels; i++) {
+			std::string name = "route " + std::to_string(i);
+			obs_data_set_default_int(settings, name.c_str(), -1);
+		}
+		for (int i = recorded_channels; i < max_channels; i++) {
 			std::string name = "route " + std::to_string(i);
 			obs_data_set_default_int(settings, name.c_str(), -1);
 		}
@@ -443,7 +465,8 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 {
 	size_t          i;
 	const char *    curDeviceId = obs_data_get_string(settings, "device_id");
-	obs_property_t *route[MAX_AUDIO_CHANNELS];
+	int                           max_channels = get_max_obs_channels();
+	std::vector<obs_property_t *> route(max_channels, nullptr);
 	speaker_layout  layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 
 	int recorded_channels = get_audio_channels(layout);
@@ -466,7 +489,7 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 		obs_property_list_insert_string(list, 0, " ", curDeviceId);
 		obs_property_list_item_disable(list, 0, true);
 	} else {
-		for (i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+		for (i = 0; i < max_channels; i++) {
 			std::string name = "route " + std::to_string(i);
 			route[i]         = obs_properties_get(props, name.c_str());
 			obs_property_list_clear(route[i]);
@@ -480,11 +503,12 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 
 static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
-	obs_property_t *route[MAX_AUDIO_CHANNELS];
+	int                           max_channels = get_max_obs_channels();
+	std::vector<obs_property_t *> route(max_channels, nullptr);
 	speaker_layout  layout            = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 	int             recorded_channels = get_audio_channels(layout);
 	int             i                 = 0;
-	for (i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+	for (i = 0; i < max_channels; i++) {
 		std::string name = "route " + std::to_string(i);
 		route[i]         = obs_properties_get(props, name.c_str());
 		obs_property_list_clear(route[i]);
