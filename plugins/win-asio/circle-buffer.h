@@ -152,7 +152,7 @@ public:
 			silent_buffer      = (uint8_t*)bzalloc(buffer_size);
 			silent_buffer_size = buffer_size;
 		}
-			
+
 		int  channels = (int)get_audio_channels(layout);
 		bool muted    = true;
 		for (int i = 0; i < channels; i++) {
@@ -162,10 +162,10 @@ public:
 			} else {
 				out.data[i] = silent_buffer;
 			}
-		}	
+		}
 		if (muted)
 			return false;
-	
+
 		out.speakers = layout;
 
 		obs_source_output_audio(source, &out);
@@ -721,7 +721,7 @@ public:
 		if (!captureThread.Valid())
 			captureThread = CreateThread(nullptr, 0, this->capture_thread, this, 0, nullptr);
 
-		//listener->disconnect();
+		// listener->disconnect();
 		listener->buffer       = this;
 		listener->device_index = device_index;
 		listener->isASIOActive = true;

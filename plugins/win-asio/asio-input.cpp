@@ -172,7 +172,7 @@ public:
 		device_buffer_options opts;
 		opts.buffer_size   = device->getCurrentBufferSizeSamples();
 		opts.channel_count = (uint32_t)device->getActiveInputChannels().countNumberOfSetBits();
-		opts.name = device->getName().toStdString().c_str();
+		opts.name          = device->getName().toStdString().c_str();
 		_buffer->set_audio_format(AUDIO_FORMAT_FLOAT_PLANAR);
 		_buffer->update_sample_rate((uint32_t)device->getCurrentSampleRate());
 		_buffer->prep_circle_buffer(opts.buffer_size);
@@ -291,7 +291,7 @@ public:
 			if (n == name) {
 				if (!device) {
 					String deviceName = name.c_str();
-					device = deviceTypeAsio->createDevice(deviceName, deviceName);
+					device            = deviceTypeAsio->createDevice(deviceName, deviceName);
 					cb->getBuffer()->device_index = (uint64_t)device;
 					cb->setDevice(device, name.c_str());
 				}
@@ -343,7 +343,7 @@ public:
 				listener->route[i]    = (int)obs_data_get_int(settings, route_str.c_str());
 			}
 			for (int i = recorded_channels; i < MAX_AUDIO_CHANNELS; i++) {
-				listener->route[i]    = -1;
+				listener->route[i] = -1;
 			}
 
 			listener->layout      = layout;
@@ -405,17 +405,17 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	AudioIODevice *_device   = nullptr;
 
 	for (int i = 0; i < callbacks.size(); i++) {
-		AudioCB *      cb = callbacks[i];
+		AudioCB *      cb     = callbacks[i];
 		AudioIODevice *device = cb->getDevice();
-		std::string    n = cb->getName();
+		std::string    n      = cb->getName();
 		if (n == name) {
 			if (!device) {
-				String deviceName = name.c_str();
-				device = deviceTypeAsio->createDevice(deviceName, deviceName);
+				String deviceName             = name.c_str();
+				device                        = deviceTypeAsio->createDevice(deviceName, deviceName);
 				cb->getBuffer()->device_index = (uint64_t)device;
 				cb->setDevice(device, name.c_str());
 			}
-			_device = device;
+			_device   = device;
 			_callback = cb;
 			break;
 		}
@@ -460,7 +460,7 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 			itemFound = true;
 			break;
 		}
-	}	
+	}
 
 	if (!itemFound) {
 		obs_property_list_insert_string(list, 0, " ", curDeviceId);
