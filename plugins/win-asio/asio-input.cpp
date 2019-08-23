@@ -595,4 +595,5 @@ void obs_module_unload(void)
 		m->stopDispatchLoop();
 		m->deleteInstance();
 	}
+	delete deviceTypeAsio;
 }
