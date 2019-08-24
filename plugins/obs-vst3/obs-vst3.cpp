@@ -226,7 +226,6 @@ private:
 			buffer.setDataToReferTo((float **)audio->data, chs, audio->frames);
 			param = vst_instance->getBypassParameter();
 			bool bypass = (param && param->getValue() != 0.0f);
-			//|| (!param && !enabled);
 			if (bypass) {
 				vst_instance->processBlockBypassed(buffer, midi);
 			} else {
@@ -259,16 +258,12 @@ public:
 				if (!editor->isOnDesktop()) {
 					void *h = obs_frontend_get_main_window_handle();
 					editor->setOpaque(true);
-					/*
-					ComponentPeer::StyleFlags::windowHasCloseButton |
-							ComponentPeer::StyleFlags::windowHasTitleBar |
-							ComponentPeer::StyleFlags::windowHasMinimiseButton
-					*/
 					editor->addToDesktop(ComponentPeer::StyleFlags::windowHasCloseButton |
 									ComponentPeer::StyleFlags::windowHasTitleBar |
 									ComponentPeer::StyleFlags::
 											windowHasMinimiseButton,
 							h);
+					
 					editor->setTopLeftPosition(40, 40);
 					/*ComponentPeer::StyleFlags::windowIsResizable*/
 				}
@@ -356,10 +351,6 @@ public:
 		/*Add VSTs to list*/
 		bool scannable = vst3format.canScanForPlugins();
 		if (scannable) {
-			/*
-			const FileSearchPath search = vst3format.getDefaultLocationsToSearch();
-			StringArray paths = vst3format.searchPathsForPlugins(search, true, true);
-			*/
 			if (paths.size() < 1)
 				paths = vst3format.searchPathsForPlugins(search, true, true);
 			for (int i = 0; i < paths.size(); i++) {
@@ -420,6 +411,11 @@ public:
 	}
 };
 
+static void free_type_data(void *type_data)
+{
+	type_data = 0;
+}
+
 bool obs_module_load(void)
 {
 	MessageManager::getInstance();
@@ -435,11 +431,22 @@ bool obs_module_load(void)
 	vst3_filter.filter_audio           = VST3Host::Filter_Audio;
 	vst3_filter.get_properties         = VST3Host::Properties;
 	vst3_filter.save                   = VST3Host::Save;
+	vst3_filter.type_data              = (void*)true;
+	vst3_filter.free_type_data         = free_type_data;
 
 	int version = (JUCE_MAJOR_VERSION << 16) | (JUCE_MINOR_VERSION << 8) | JUCE_BUILDNUMBER;
 	blog(LOG_INFO, "JUCE Version: (%i) %i.%i.%i", version, JUCE_MAJOR_VERSION, JUCE_MINOR_VERSION,
 			JUCE_BUILDNUMBER);
 
 	obs_register_source(&vst3_filter);
-	return true;
+
+	if (vst3_filter.type_data) {
+		auto rescan = [](void *) {
+			if (vst3format.canScanForPlugins())
+				paths = vst3format.searchPathsForPlugins(search, true, true);
+		};
+		obs_frontend_add_tools_menu_item("Rescan", rescan, nullptr);
+	}
+
+	return vst3_filter.type_data;
 }
