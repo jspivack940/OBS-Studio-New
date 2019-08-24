@@ -131,6 +131,8 @@ private:
 
 		obs_audio_info aoi;
 		juce::String   file = obs_data_get_string(settings, "effect");
+		enabled             = obs_data_get_bool(settings, "enable");
+
 		juce::String   err;
 		if (file.compare(current_file) != 0) {
 			host_close();
@@ -140,46 +142,48 @@ private:
 				blog(LOG_INFO, "%s", descs[0]->name.toStdString().c_str());
 				desc = *descs[0];
 				if (obs_get_audio_info(&aoi)) {
-					new_vst_instance = vst3format.createInstanceFromDescription(
-							desc, aoi.samples_per_sec, 2 * obs_output_frames, err);
-					if (err.toStdString().length() > 0) {
-						blog(LOG_WARNING, "failed to load! %s", err.toStdString().c_str());
-					}
-					if (new_vst_instance) {
-						new_vst_instance->setNonRealtime(false);
-						new_vst_instance->prepareToPlay(
-								(double)aoi.samples_per_sec, 2 * obs_output_frames);
-
-						String state = obs_data_get_string(settings, "state");
-						if (!vst_settings) {
-							juce::MemoryBlock m;
-							m.fromBase64Encoding(state);
-							new_vst_instance->setStateInformation(m.getData(), m.getSize());
-							vst_settings = obs_data_create();
-						} else {
-							obs_data_clear(vst_settings);
+					String state    = obs_data_get_string(settings, "state");
+					auto callback = [state, this, &aoi, file](AudioPluginInstance *inst, const juce::String &err) {
+						new_vst_instance = inst;
+						if (err.toStdString().length() > 0) {
+							blog(LOG_WARNING, "failed to load! %s",
+									err.toStdString().c_str());
 						}
-						new_vst_instance->addListener(this);
-					}
+						if (new_vst_instance) {
+							new_vst_instance->setNonRealtime(false);
+							new_vst_instance->prepareToPlay((double)aoi.samples_per_sec,
+									2 * obs_output_frames);
+							
+							if (!vst_settings) {
+								juce::MemoryBlock m;
+								m.fromBase64Encoding(state);
+								new_vst_instance->setStateInformation(
+										m.getData(), m.getSize());
+								vst_settings = obs_data_create();
+							} else {
+								obs_data_clear(vst_settings);
+							}
+
+							juce::AudioProcessorParameter *nparam =
+									new_vst_instance->getBypassParameter();
+							if (nparam) {
+								nparam->beginChangeGesture();
+								nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
+								nparam->endChangeGesture();
+							}
+
+							new_vst_instance->addListener(this);
+						}
+						current_file = file;
+						swap         = true;
+					};
+					vst3format.createPluginInstanceAsync(
+							desc, (double)aoi.samples_per_sec, 2 * obs_output_frames, callback);
 				}
 			}
-			current_file = file;
-			swap         = true;
 		}
-
-		enabled = obs_data_get_bool(settings, "bypass");
 
 		juce::AudioProcessorParameter *nparam;
-		if (new_vst_instance)
-			nparam = new_vst_instance->getBypassParameter();
-		else
-			nparam = nullptr;
-		if (nparam) {
-			nparam->beginChangeGesture();
-			nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
-			nparam->endChangeGesture();
-		}
-
 		if (vst_instance)
 			nparam = vst_instance->getBypassParameter();
 		else
@@ -203,6 +207,8 @@ private:
 			old_vst_instance = vst_instance;
 			vst_instance     = new_vst_instance;
 			new_vst_instance = nullptr;
+			if (old_vst_instance)
+				old_vst_instance->removeListener(this);
 			swap             = false;
 		}
 
@@ -345,7 +351,7 @@ public:
 
 		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
 		obs_property_set_enabled(vst_host_button, plugin->has_gui());
-		obs_properties_add_bool(props, "bypass", "enable effect");
+		obs_properties_add_bool(props, "enable", "enable effect");
 
 		/*Add VSTs to list*/
 		bool scannable = vst3format.canScanForPlugins();
@@ -377,6 +383,7 @@ public:
 	{
 		/*Setup Defaults*/
 		obs_data_set_default_string(settings, "effect", "None");
+		obs_data_set_default_double(settings, "enable", true);
 	}
 
 	static const char *Name(void *unused)
