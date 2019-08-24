@@ -66,9 +66,9 @@ VST3PluginFormat     vst3format;
 const int            obs_output_frames = AUDIO_OUTPUT_FRAMES;
 const FileSearchPath search            = vst3format.getDefaultLocationsToSearch();
 StringArray          paths             = vst3format.searchPathsForPlugins(search, true, true);
-const int            obs_max_channels  = get_max_obs_channels();
+const volatile int            obs_max_channels  = get_max_obs_channels();
 
-class VST3Host {
+class VST3Host : private AudioProcessorParameter::Listener {
 private:
 	juce::OwnedArray<juce::PluginDescription> descs;
 	PluginDescription                         desc;
@@ -79,10 +79,12 @@ private:
 	obs_source_t *                            context          = nullptr;
 	juce::String                              current_file;
 
+	juce::AudioProcessorParameter *param = nullptr;
+
 	juce::MidiBuffer         midi;
 	juce::AudioBuffer<float> buffer;
 
-	bool enable = true;
+	bool enabled = true;
 	bool swap   = false;
 
 	void update(obs_data_t *settings)
@@ -118,16 +120,28 @@ private:
 						new_vst_instance->setNonRealtime(false);
 						//AudioProcessorListener *bypass_listener = new AudioProcessorListener();
 						//AudioProcessorListener *       l = new AudioProcessorListener();
-						//juce::AudioProcessorParameter *param =
-						//		new_vst_instance->getBypassParameter();
-						//param->addListener(l)
+						/*
+							juce::AudioProcessorParameter *param =
+									new_vst_instance->getBypassParameter();
+									*/
+						//param->addListener(this);
 					}
 				}
 			}
 			swap = true;
 		}
 
-		enable = obs_data_get_bool(settings, "bypass");
+		enabled = obs_data_get_bool(settings, "bypass");
+		/*
+		param = new_vst_instance->getBypassParameter();
+		if (param) {
+			enabled = obs_data_get_bool(settings, "bypass");
+			param->beginChangeGesture();
+			param->setValueNotifyingHost(1.0f);
+			param->endChangeGesture();
+		}
+		*/
+		//
 		/*
 		if (vst_instance) {
 			juce::AudioProcessorParameter *param = vst_instance->getBypassParameter();
@@ -138,6 +152,16 @@ private:
 			param->setValue(enable);
 		}
 		*/
+	}
+
+	void parameterValueChanged(int parameterIndex, float newValue) override
+	{
+		enabled = newValue != 0.0f;
+	}
+
+	void parameterGestureChanged(int parameterIndex, bool gestureIsStarting) override
+	{
+
 	}
 
 	void save(obs_data_t *settings)
@@ -160,19 +184,22 @@ private:
 				if (!audio->data[chs])
 					break;
 
-			struct obs_audio_info aoi;
-			obs_get_audio_info(&aoi);
-
+			//struct obs_audio_info aoi;
+			//obs_get_audio_info(&aoi);
 			// vst_instance->prepareToPlay((double)aoi.samples_per_sec, audio->frames);
 			buffer.setDataToReferTo((float **)audio->data, chs, audio->frames);
-			if (enable)
+			//param = vst_instance->getBypassParameter();
+			if (enabled)
 				vst_instance->processBlock(buffer, midi);
 			else
 				vst_instance->processBlockBypassed(buffer, midi);
-			/* do we need this? */
+
+			/* don't need this */
+			/*
 			float **out = buffer.getArrayOfWritePointers();
 			for (int i = 0; i < chs; i++)
 				memcpy(audio->data[i], out[i], audio->frames * sizeof(float));
+				*/
 		}
 	}
 
@@ -184,10 +211,7 @@ public:
 
 	~VST3Host()
 	{
-		if (editor) {
-			delete editor;
-			editor = nullptr;
-		}
+		host_close();
 		if (vst_instance) {
 			vst_instance->releaseResources();
 			delete vst_instance;
@@ -213,18 +237,34 @@ public:
 			//AudioProcessorEditor *p = vst_instance->createEditor();
 			editor = vst_instance->createEditorIfNeeded();
 			if (editor) {
-				editor->addToDesktop(ComponentPeer::StyleFlags::windowHasCloseButton |
-						ComponentPeer::StyleFlags::windowHasTitleBar |
-						ComponentPeer::StyleFlags::windowHasMinimiseButton |
-						ComponentPeer::StyleFlags::windowIsResizable);
+				if (!editor->isOnDesktop()) {
+					void* h = obs_frontend_get_main_window_handle();
+					editor->setOpaque(true);
+					/*
+					ComponentPeer::StyleFlags::windowHasCloseButton |
+							ComponentPeer::StyleFlags::windowHasTitleBar |
+							ComponentPeer::StyleFlags::windowHasMinimiseButton
+					*/
+					editor->addToDesktop(0, h);
+					/*ComponentPeer::StyleFlags::windowIsResizable*/
+				}
+				if (!editor->isVisible()) {
+					editor->setVisible(true);
+				}
+				/*
 				editor->setResizable(true, true);
 				editor->setAlpha(1.0);
 				editor->setVisible(true);
-				
-				/*
-						*/
+				*/
 			}
-			// vst_instance->createEditorIfNeeded();
+		}
+	}
+
+	void host_close()
+	{
+		if (editor) {
+			delete editor;
+			editor = nullptr;
 		}
 	}
 
@@ -245,8 +285,10 @@ public:
 	{
 		VST3Host *plugin = static_cast<VST3Host *>(vptr);
 		obs_property_t *vst_host_button = obs_properties_get(props, "vst_button");
+		if (plugin)
+			plugin->host_close();
 		obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
-		return false;
+		return true;
 	}
 
 	static obs_properties_t *Properties(void *vptr)
