@@ -70,14 +70,13 @@ const volatile int            obs_max_channels  = get_max_obs_channels();
 
 class VST3Host : private AudioProcessorParameter::Listener {
 private:
-	juce::OwnedArray<juce::PluginDescription> descs;
 	PluginDescription                         desc;
 	AudioPluginInstance *                     vst_instance     = nullptr;
 	AudioPluginInstance *                     new_vst_instance = nullptr;
 	AudioPluginInstance *                     old_vst_instance = nullptr;
 	AudioProcessorEditor *                    editor           = nullptr;
 	obs_source_t *                            context          = nullptr;
-	juce::String                              current_file;
+	juce::String                              current_file = "";
 
 	juce::AudioProcessorParameter *param = nullptr;
 
@@ -87,21 +86,29 @@ private:
 	bool enabled = true;
 	bool swap   = false;
 
+	void close_vst(AudioPluginInstance *inst)
+	{
+		if (inst) {
+			AudioProcessorEditor *e = inst->getActiveEditor();
+			if (e)
+				delete e;
+			inst->releaseResources();
+			delete inst;
+			inst = nullptr;
+		}
+	}
+
 	void update(obs_data_t *settings)
 	{
-		if (old_vst_instance) {
-			old_vst_instance->releaseResources();
-			delete old_vst_instance;
-			old_vst_instance = nullptr;
-		}
+		close_vst(old_vst_instance);
+		old_vst_instance = nullptr;
+
 		obs_audio_info aoi;
 		juce::String   file = obs_data_get_string(settings, "effect");
 		juce::String   err;
 		if (file.compare(current_file) != 0) {
-			if (editor) {
-				delete editor;
-				editor = nullptr;
-			}
+			host_close();
+			juce::OwnedArray<juce::PluginDescription> descs;
 			vst3format.findAllTypesForFile(descs, file);
 			if (descs.size() > 0) {
 				blog(LOG_INFO, "%s", descs[0]->name.toStdString().c_str());
@@ -128,6 +135,7 @@ private:
 					}
 				}
 			}
+			current_file = file;
 			swap = true;
 		}
 
@@ -193,13 +201,6 @@ private:
 				vst_instance->processBlock(buffer, midi);
 			else
 				vst_instance->processBlockBypassed(buffer, midi);
-
-			/* don't need this */
-			/*
-			float **out = buffer.getArrayOfWritePointers();
-			for (int i = 0; i < chs; i++)
-				memcpy(audio->data[i], out[i], audio->frames * sizeof(float));
-				*/
 		}
 	}
 
@@ -212,30 +213,18 @@ public:
 	~VST3Host()
 	{
 		host_close();
-		if (vst_instance) {
-			vst_instance->releaseResources();
-			delete vst_instance;
-		}
-		if (old_vst_instance) {
-			old_vst_instance->releaseResources();
-			delete old_vst_instance;
-		}
-		if (new_vst_instance) {
-			new_vst_instance->releaseResources();
-			delete new_vst_instance;
-		}
+		close_vst(old_vst_instance);
+		close_vst(vst_instance);
+		close_vst(new_vst_instance);
 	}
 
 	void host_clicked()
 	{
-		if (editor) {
-			delete editor;
-			editor = nullptr;
-		}
+		host_close();
 
 		if (has_gui()) {
 			//AudioProcessorEditor *p = vst_instance->createEditor();
-			editor = vst_instance->createEditorIfNeeded();
+			editor = vst_instance->createEditor(); // vst_instance->createEditorIfNeeded();
 			if (editor) {
 				if (!editor->isOnDesktop()) {
 					void* h = obs_frontend_get_main_window_handle();
@@ -245,7 +234,11 @@ public:
 							ComponentPeer::StyleFlags::windowHasTitleBar |
 							ComponentPeer::StyleFlags::windowHasMinimiseButton
 					*/
-					editor->addToDesktop(0, h);
+					editor->addToDesktop(ComponentPeer::StyleFlags::windowHasCloseButton |
+							ComponentPeer::StyleFlags::windowHasTitleBar |
+							ComponentPeer::StyleFlags::windowHasMinimiseButton,
+							h);
+					editor->setTopLeftPosition(40, 40);
 					/*ComponentPeer::StyleFlags::windowIsResizable*/
 				}
 				if (!editor->isVisible()) {
@@ -270,7 +263,7 @@ public:
 
 	bool has_gui()
 	{
-		return vst_instance && vst_instance->hasEditor();
+		return !swap && vst_instance && vst_instance->hasEditor();
 	}
 
 	static bool vst_host_clicked(obs_properties_t *props, obs_property_t *property, void *vptr)
@@ -288,7 +281,7 @@ public:
 		if (plugin)
 			plugin->host_close();
 		obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
-		return true;
+		return false;
 	}
 
 	static obs_properties_t *Properties(void *vptr)
@@ -378,6 +371,8 @@ public:
 
 bool obs_module_load(void)
 {
+	MessageManager::getInstance();
+
 	struct obs_source_info vst3_filter = {};
 	vst3_filter.id                     = "vst_filter3";
 	vst3_filter.type                   = OBS_SOURCE_TYPE_FILTER;
@@ -389,6 +384,9 @@ bool obs_module_load(void)
 	vst3_filter.filter_audio           = VST3Host::Filter_Audio;
 	vst3_filter.get_properties         = VST3Host::Properties;
 	vst3_filter.save                   = VST3Host::Save;
+
+	int version = (JUCE_MAJOR_VERSION << 16) | (JUCE_MINOR_VERSION << 8) | JUCE_BUILDNUMBER;
+	blog(LOG_INFO, "JUCE Version: (%i) %i.%i.%i", version, JUCE_MAJOR_VERSION, JUCE_MINOR_VERSION, JUCE_BUILDNUMBER);
 
 	obs_register_source(&vst3_filter);
 	return true;
