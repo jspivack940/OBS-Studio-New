@@ -22,16 +22,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * extent that you do not distribute your binaries.
  */
 
-#include <util/bmem.h>
-#include <util/dstr.h>
-#include <util/platform.h>
-#include <util/threading.h>
 #include <obs-module.h>
 #include <obs-frontend-api.h>
-#include <vector>
-#include <stdio.h>
 #include <JuceHeader.h>
-#include <juce_audio_processors/juce_audio_processors.h>
+//#include <juce_audio_processors/juce_audio_processors.h>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-vst3", "en-US")
@@ -93,18 +87,18 @@ public:
 
 class VST3Host : private AudioProcessorListener {
 private:
-	PluginDescription     desc;
-	AudioPluginInstance * vst_instance     = nullptr;
-	AudioPluginInstance * new_vst_instance = nullptr;
-	AudioPluginInstance * old_vst_instance = nullptr;
-	
-	obs_source_t *        context          = nullptr;
-	juce::MemoryBlock     vst_state;
-	obs_data_t *          vst_settings = nullptr;
-	juce::String          current_file = "";
-	juce::String          current_name = "";
+	PluginDescription    desc;
+	AudioPluginInstance *vst_instance     = nullptr;
+	AudioPluginInstance *new_vst_instance = nullptr;
+	AudioPluginInstance *old_vst_instance = nullptr;
 
-	std::weak_ptr<DialogWindow>         dialog;
+	obs_source_t *    context = nullptr;
+	juce::MemoryBlock vst_state;
+	obs_data_t *      vst_settings = nullptr;
+	juce::String      current_file = "";
+	juce::String      current_name = "";
+
+	std::weak_ptr<DialogWindow>           dialog;
 	std::unique_ptr<AudioProcessorEditor> editor;
 
 	juce::AudioProcessorParameter *param = nullptr;
@@ -112,8 +106,11 @@ private:
 	juce::MidiBuffer         midi;
 	juce::AudioBuffer<float> buffer;
 
-	bool enabled = true;
-	bool swap    = false;
+	bool enabled      = true;
+	bool swap         = false;
+	bool asynchronous = true;
+
+	std::shared_ptr<VST3Host> self;
 
 	void audioProcessorParameterChanged(AudioProcessor *processor, int parameterIndex, float newValue)
 	{
@@ -163,10 +160,61 @@ private:
 		}
 	}
 
+	void change_device(AudioPluginInstance *inst, juce::String err, juce::String state, juce::String file,
+		juce::String vst_processor, std::vector<std::pair<int, float>> vstsaved)
+	{
+		new_vst_instance = inst;
+		if (err.toStdString().length() > 0) {
+			blog(LOG_WARNING, "failed to load! %s", err.toStdString().c_str());
+		}
+		if (new_vst_instance) {
+			double sample_rate = new_vst_instance->getSampleRate();
+			new_vst_instance->setNonRealtime(false);
+			new_vst_instance->prepareToPlay(sample_rate, 2 * obs_output_frames);
+			String new_vst_processor = new_vst_instance->getName();
+
+			juce::AudioProcessorParameter *nparam = new_vst_instance->getBypassParameter();
+			if (nparam) {
+				nparam->beginChangeGesture();
+				nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
+				nparam->endChangeGesture();
+			}
+
+			new_vst_instance->addListener(this);
+
+			if (!vst_settings && new_vst_processor.compare(vst_processor) == 0) {
+				/*
+				juce::MemoryBlock m;
+				m.fromBase64Encoding(state);
+				new_vst_instance->setStateInformation(
+				m.getData(), m.getSize());
+				*/
+				for (int i = 0; i < vstsaved.size(); i++) {
+					int   p = vstsaved[i].first;
+					float v = vstsaved[i].second;
+					new_vst_instance->beginParameterChangeGesture(p);
+
+					new_vst_instance->setParameter(p, v);
+					new_vst_instance->endParameterChangeGesture(p);
+				}
+				vst_settings = obs_data_create();
+			} else {
+				// obs_data_clear(vst_settings);
+			}
+			current_name = new_vst_processor;
+		} else {
+			current_name = "";
+		}
+		current_file = file;
+		swap         = true;
+	}
+
 	void update(obs_data_t *settings)
 	{
 		if (swap)
 			return;
+		std::weak_ptr<VST3Host> tmp_self = self;
+
 		close_vst(old_vst_instance);
 		old_vst_instance = nullptr;
 
@@ -184,7 +232,7 @@ private:
 				desc = *descs[0];
 
 				if (obs_get_audio_info(&aoi)) {
-					String state = obs_data_get_string(settings, "state");
+					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
 					std::vector<std::pair<int, float>> vstsaved;
 					vstsaved.reserve(64);
@@ -209,64 +257,29 @@ private:
 									vstsaved.push_back({idx, f});
 								}
 							} catch (...) {
-
 							}
 						}
 					}
+					obs_data_item_release(&item);
 
-					auto callback = [state, this, &aoi, file, vst_processor, vstsaved](AudioPluginInstance *inst,
-									const juce::String &                     err) {
-						new_vst_instance = inst;
-						if (err.toStdString().length() > 0) {
-							blog(LOG_WARNING, "failed to load! %s",
-									err.toStdString().c_str());
-						}
-						if (new_vst_instance) {
-							new_vst_instance->setNonRealtime(false);
-							new_vst_instance->prepareToPlay((double)aoi.samples_per_sec,
-									2 * obs_output_frames);
-							String new_vst_processor = new_vst_instance->getName();
-
-							juce::AudioProcessorParameter *nparam =
-									new_vst_instance->getBypassParameter();
-							if (nparam) {
-								nparam->beginChangeGesture();
-								nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
-								nparam->endChangeGesture();
-							}
-
-							new_vst_instance->addListener(this);
-
-							if (!vst_settings &&
-									new_vst_processor.compare(vst_processor) == 0) {
-								/*
-								juce::MemoryBlock m;
-								m.fromBase64Encoding(state);
-								new_vst_instance->setStateInformation(
-										m.getData(), m.getSize());
-								*/
-								for (int i = 0; i < vstsaved.size(); i++) {
-									int   p = vstsaved[i].first;
-									float v = vstsaved[i].second;
-									new_vst_instance->beginParameterChangeGesture(
-											p);
-
-									new_vst_instance->setParameter(p, v);
-									new_vst_instance->endParameterChangeGesture(p);
-								}
-								vst_settings = obs_data_create();
-							} else {
-								// obs_data_clear(vst_settings);
-							}
-							current_name = new_vst_processor;
-						} else {
-							current_name = "";
-						}
-						current_file = file;
-						swap         = true;
+					auto callback = [state, tmp_self, &aoi, file, vst_processor, vstsaved](
+									AudioPluginInstance *inst,
+									const juce::String & err) {
+						auto myself = tmp_self.lock();
+						if (myself)
+							myself->change_device(inst, err, state, file, vst_processor,
+									vstsaved);
 					};
-					vst3format.createPluginInstanceAsync(desc, (double)aoi.samples_per_sec,
-							2 * obs_output_frames, callback);
+					if (asynchronous) {
+						vst3format.createPluginInstanceAsync(desc, (double)aoi.samples_per_sec,
+								2 * obs_output_frames, callback);
+					} else {
+						String               err;
+						AudioPluginInstance *inst = vst3format.createInstanceFromDescription(
+								desc, (double)aoi.samples_per_sec,
+								2 * obs_output_frames, err);
+						callback(inst, err);
+					}
 				}
 			}
 		}
@@ -324,6 +337,11 @@ private:
 	}
 
 public:
+	std::shared_ptr<VST3Host> get()
+	{
+		return self;
+	}
+
 	VST3Host(obs_data_t *settings, obs_source_t *source) : context(source)
 	{
 		update(settings);
@@ -433,7 +451,7 @@ public:
 	static bool vst_host_clicked(obs_properties_t *props, obs_property_t *property, void *vptr)
 	{
 		VST3Host *plugin = static_cast<VST3Host *>(vptr);
-		//obs_property_t *effect = obs_properties_get(props, "effect");
+		// obs_property_t *effect = obs_properties_get(props, "effect");
 		if (plugin) {
 			if (plugin->old_host()) {
 				plugin->host_close();
@@ -519,10 +537,16 @@ public:
 			plugin->save(settings);
 	}
 
+	void destroy()
+	{
+		self.reset();
+	}
+
 	static void Destroy(void *vptr)
 	{
 		VST3Host *plugin = static_cast<VST3Host *>(vptr);
-		delete plugin;
+		if (plugin)
+			plugin->destroy();
 		plugin = nullptr;
 	}
 
