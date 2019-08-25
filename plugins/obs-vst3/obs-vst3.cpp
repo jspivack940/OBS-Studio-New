@@ -77,22 +77,17 @@ public:
 		: DialogWindow(name, backgroundColour, escapeKeyTriggersCloseButton, addToDesktop)
 	{
 		self.reset(this);
-		// self = std::make_shared<DialogWindow>(static_cast<DialogWindow*>(this));
 	}
 	~VSTWindow()
 	{
-		self.~shared_ptr();
 	}
-
 	std::shared_ptr<DialogWindow> get()
 	{
 		return self;
 	}
 	void closeButtonPressed()
 	{
-		self.~shared_ptr();
-		// self.reset(nullptr);
-		// delete this;
+		self.reset();
 	}
 };
 
@@ -107,9 +102,9 @@ private:
 	juce::MemoryBlock     vst_state;
 	obs_data_t *          vst_settings = nullptr;
 	juce::String          current_file = "";
+	juce::String          current_name = "";
 
-	// DialogWindow *dialog = nullptr;
-	std::weak_ptr<DialogWindow> dialog;
+	std::weak_ptr<DialogWindow>         dialog;
 	std::unique_ptr<AudioProcessorEditor> editor;
 
 	juce::AudioProcessorParameter *param = nullptr;
@@ -263,7 +258,9 @@ private:
 							} else {
 								// obs_data_clear(vst_settings);
 							}
-
+							current_name = new_vst_processor;
+						} else {
+							current_name = "";
 						}
 						current_file = file;
 						swap         = true;
@@ -356,29 +353,28 @@ public:
 		return file.compare(current_file) == 0;
 	}
 
+	bool old_host()
+	{
+		if (vst_instance) {
+			auto d = dialog.lock();
+			if (d)
+				return current_name.compare(d->getName()) != 0;
+		} else {
+			return current_name.compare("") != 0;
+		}
+	}
+
 	void host_clicked()
 	{
 		if (has_gui()) {
-			if (dialog.expired()) {
+			if (!host_open()) {
 				VSTWindow *w = new VSTWindow(desc.name, juce::Colour(255, 255, 255), false, false);
 				dialog       = w->get();
-				editor.reset(vst_instance->createEditorIfNeeded());
-
-				auto d = dialog.lock();
-				if (d && editor) {
-					// d->setContentNonOwned(editor, true);
-					d->setContentNonOwned(editor.get(), true);
-					host_show();
-					editor->setOpaque(true);
-					if (!editor->isVisible())
-						editor->setVisible(true);
-				}
-			} else {
-				auto d = dialog.lock();
-				if (!editor)
-					editor.reset(vst_instance->createEditorIfNeeded());
-				if (d && editor) {
-					// d->setContentNonOwned(editor, true);
+			}
+			auto d = dialog.lock();
+			if (d) {
+				editor.reset(vst_instance->createEditor());
+				if (editor) {
 					d->setContentNonOwned(editor.get(), true);
 					host_show();
 					editor->setOpaque(true);
@@ -395,11 +391,7 @@ public:
 		if (d) {
 			void *h = obs_frontend_get_main_window_handle();
 			d->setOpaque(true);
-			/*
-			(ComponentPeer::StyleFlags::windowHasCloseButton |
-						     ComponentPeer::StyleFlags::windowHasTitleBar |
-						     ComponentPeer::StyleFlags::windowHasMinimiseButton)
-			*/
+			d->setName(current_name);
 			if (!d->isOnDesktop()) {
 				int f = d->getDesktopWindowStyleFlags();
 				f |= (ComponentPeer::StyleFlags::windowHasCloseButton |
@@ -421,45 +413,34 @@ public:
 
 	void host_close()
 	{
-		if(!dialog.expired()) {
-			auto d = dialog.lock();
+		auto d = dialog.lock();
+		if (d)
 			d->closeButtonPressed();
-			if (!dialog.expired())
-				dialog.reset();
-		}
+
 		editor.reset();
-		/*
-		if (editor) {
-			delete editor;
-			editor = nullptr;
-		}
-		*/
 	}
 
 	bool has_gui()
 	{
-		return !swap && vst_instance && vst_instance->hasEditor();
+		return vst_instance && vst_instance->hasEditor();
 	}
 
 	bool host_open()
 	{
-		return !dialog.expired();
+		return dialog.use_count();
 	}
 
 	static bool vst_host_clicked(obs_properties_t *props, obs_property_t *property, void *vptr)
 	{
 		VST3Host *plugin = static_cast<VST3Host *>(vptr);
-		bool      s      = true;
+		//obs_property_t *effect = obs_properties_get(props, "effect");
 		if (plugin) {
-			s = !plugin->host_open();
-			if (s) {
-				plugin->host_clicked();
-			} else {
+			if (plugin->old_host()) {
 				plugin->host_close();
 			}
+			plugin->host_clicked();
 		}
-		obs_property_set_description(property, s ? "Hide" : "Show");
-		return true;
+		return false;
 	}
 
 	static bool vst_selected_modified(
@@ -468,7 +449,7 @@ public:
 		VST3Host *      plugin          = static_cast<VST3Host *>(vptr);
 		obs_property_t *vst_host_button = obs_properties_get(props, "vst_button");
 		juce::String    file            = obs_data_get_string(settings, "effect");
-		if (plugin && !plugin->current_file_is(file))
+		if (plugin && (!plugin->current_file_is(file) || plugin->old_host()))
 			plugin->host_close();
 		obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
 		return true;
@@ -487,9 +468,8 @@ public:
 		vst_list = obs_properties_add_list(
 				props, "effect", "vsts", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(vst_list, vst_selected_modified, plugin);
-
 		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
-		// obs_property_set_enabled(vst_host_button, plugin->has_gui());
+
 		obs_properties_add_bool(props, "enable", "enable effect");
 
 		/*Add VSTs to list*/
