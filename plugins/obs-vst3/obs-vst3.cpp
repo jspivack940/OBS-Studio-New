@@ -180,8 +180,6 @@ private:
 				nparam->endChangeGesture();
 			}
 
-			new_vst_instance->addListener(this);
-
 			if (!vst_settings && new_vst_processor.compare(vst_processor) == 0) {
 				/*
 				juce::MemoryBlock m;
@@ -201,6 +199,8 @@ private:
 			} else {
 				// obs_data_clear(vst_settings);
 			}
+
+			new_vst_instance->addListener(this);
 			current_name = new_vst_processor;
 		} else {
 			current_name = "";
@@ -262,7 +262,7 @@ private:
 					}
 					obs_data_item_release(&item);
 
-					auto callback = [state, tmp_self, &aoi, file, vst_processor, vstsaved](
+					auto callback = [state, tmp_self, file, vst_processor, vstsaved](
 									AudioPluginInstance *inst,
 									const juce::String & err) {
 						auto myself = tmp_self.lock();
@@ -351,9 +351,14 @@ public:
 	{
 		obs_data_release(vst_settings);
 		host_close();
+		close_vsts();
+		close_vst(new_vst_instance);
+	}
+
+	void close_vsts()
+	{
 		close_vst(old_vst_instance);
 		close_vst(vst_instance);
-		close_vst(new_vst_instance);
 	}
 
 	bool host_is_named(juce::String processor)
@@ -545,8 +550,10 @@ public:
 	static void Destroy(void *vptr)
 	{
 		VST3Host *plugin = static_cast<VST3Host *>(vptr);
-		if (plugin)
+		if (plugin) {
+			plugin->close_vsts();
 			plugin->destroy();
+		}
 		plugin = nullptr;
 	}
 
