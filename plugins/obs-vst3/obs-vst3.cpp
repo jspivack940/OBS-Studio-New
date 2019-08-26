@@ -58,7 +58,8 @@ int get_max_obs_channels()
 
 VSTPluginFormat  vst2format;
 VST3PluginFormat vst3format;
-const int        obs_output_frames = AUDIO_OUTPUT_FRAMES;
+
+const int obs_output_frames = AUDIO_OUTPUT_FRAMES;
 
 static FileSearchPath search = vst3format.getDefaultLocationsToSearch();
 StringArray           paths;
@@ -94,32 +95,37 @@ public:
 	}
 };
 
-StringArray get_paths(VSTPluginFormat f)
+StringArray get_paths(VSTPluginFormat &f)
 {
+	UNUSED_PARAMETER(f);
 	return paths_2x;
 }
 
-StringArray get_paths(VST3PluginFormat f)
+StringArray get_paths(VST3PluginFormat &f)
 {
+	UNUSED_PARAMETER(f);
 	return paths;
 }
 
-void set_paths(VSTPluginFormat f, StringArray p)
+void set_paths(VSTPluginFormat &f, StringArray p)
 {
 	paths_2x = p;
 }
 
-void set_paths(VST3PluginFormat f, StringArray p)
+void set_paths(VST3PluginFormat &f, StringArray p)
 {
 	paths = p;
 }
 
 template<class pluginformat> class VSTHost : private AudioProcessorListener {
 private:
-	PluginDescription    desc;
+	juce::AudioBuffer<float> buffer;
+	juce::MidiBuffer         midi;
+
 	AudioPluginInstance *vst_instance     = nullptr;
 	AudioPluginInstance *new_vst_instance = nullptr;
 	AudioPluginInstance *old_vst_instance = nullptr;
+	PluginDescription    desc;
 
 	obs_source_t *    context = nullptr;
 	juce::MemoryBlock vst_state;
@@ -129,13 +135,10 @@ private:
 
 	std::weak_ptr<DialogWindow> dialog;
 	// AudioProcessorEditor *editor;
-	//juce::SharedResourcePointer<AudioProcessorEditor> editor;
-	//std::unique_ptr<AudioProcessorEditor> editor;
+	// juce::SharedResourcePointer<AudioProcessorEditor> editor;
+	// std::unique_ptr<AudioProcessorEditor> editor;
 
 	juce::AudioProcessorParameter *param = nullptr;
-
-	juce::MidiBuffer         midi;
-	juce::AudioBuffer<float> buffer;
 
 	bool enabled      = true;
 	bool swap         = false;
@@ -260,17 +263,26 @@ private:
 		obs_audio_info aoi;
 		aoi.samples_per_sec = 48000;
 
-		juce::String file = obs_data_get_string(settings, "effect");
-		enabled           = obs_data_get_bool(settings, "enable");
+		juce::String file   = obs_data_get_string(settings, "effect");
+		juce::String plugin = obs_data_get_string(settings, "desc");
+		enabled             = obs_data_get_bool(settings, "enable");
 
 		juce::String err;
-		if (file.compare(current_file) != 0 && file.compare("") != 0) {
+
+		auto clear_vst = [this]() {
+			close_vst(new_vst_instance);
+			new_vst_instance = nullptr;
+			desc             = PluginDescription();
+			swap             = true;
+		};
+
+		if (file.compare("") == 0 || plugin.compare("") == 0) {
+			clear_vst();
+		} else if (file.compare(current_file) != 0 || plugin.compare(current_name)) {
 			host_close();
 			juce::OwnedArray<juce::PluginDescription> descs;
 			plugin_format.findAllTypesForFile(descs, file);
 			if (descs.size() > 0) {
-				blog(LOG_INFO, "%s", descs[0]->name.toStdString().c_str());
-				desc = *descs[0];
 				obs_get_audio_info(&aoi);
 				if (true) {
 					String state         = obs_data_get_string(settings, "state");
@@ -311,18 +323,36 @@ private:
 							myself->change_device(inst, err, state, file, vst_processor,
 									vstsaved);
 					};
-					if (asynchronous) {
-						plugin_format.createPluginInstanceAsync(desc,
-								(double)aoi.samples_per_sec, 2 * obs_output_frames,
-								callback);
+
+					bool found = false;
+					for (int i = 0; i < descs.size(); i++) {
+						if (plugin.compare(descs[i]->name) == 0) {
+							desc  = *descs[i];
+							found = true;
+							break;
+						}
+					}
+
+					if (found) {
+						if (asynchronous) {
+							plugin_format.createPluginInstanceAsync(desc,
+									(double)aoi.samples_per_sec,
+									2 * obs_output_frames, callback);
+						} else {
+							String               err;
+							AudioPluginInstance *inst =
+									plugin_format.createInstanceFromDescription(
+											desc,
+											(double)aoi.samples_per_sec,
+											2 * obs_output_frames, err);
+							callback(inst, err);
+						}
 					} else {
-						String               err;
-						AudioPluginInstance *inst = plugin_format.createInstanceFromDescription(
-								desc, (double)aoi.samples_per_sec,
-								2 * obs_output_frames, err);
-						callback(inst, err);
+						clear_vst();
 					}
 				}
+			} else {
+				clear_vst();
 			}
 		}
 
@@ -406,8 +436,8 @@ public:
 
 	void close_vsts()
 	{
-		//close_vst(old_vst_instance);
-		//close_vst(vst_instance);
+		// close_vst(old_vst_instance);
+		// close_vst(vst_instance);
 	}
 
 	bool host_is_named(juce::String processor)
@@ -523,11 +553,24 @@ public:
 	static bool vst_selected_modified(
 			void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 	{
+		static pluginformat f;
+
 		VSTHost<pluginformat> *plugin          = static_cast<VSTHost<pluginformat> *>(vptr);
 		obs_property_t *       vst_host_button = obs_properties_get(props, "vst_button");
+		obs_property_t *       desc_list       = obs_properties_get(props, "desc");
 		juce::String           file            = obs_data_get_string(settings, "effect");
 		if (plugin && (!plugin->current_file_is(file) || plugin->old_host()))
 			plugin->host_close();
+
+		obs_property_list_clear(desc_list);
+
+		juce::OwnedArray<juce::PluginDescription> descs;
+		f.findAllTypesForFile(descs, file);
+		for (int i = 0; i < descs.size(); i++) {
+			std::string n = descs[i]->name.toStdString();
+			obs_property_list_add_string(desc_list, n.c_str(), n.c_str());
+		}
+
 		// obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
 		return true;
 	}
@@ -541,23 +584,26 @@ public:
 		props = obs_properties_create();
 
 		obs_property_t *vst_list;
+		obs_property_t *desc_list;
 		obs_property_t *vst_host_button;
 		obs_property_t *bypass;
 		vst_list = obs_properties_add_list(
-				props, "effect", "vsts", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+				props, "effect", "File", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+		desc_list = obs_properties_add_list(
+				props, "desc", "Plugin", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(vst_list, vst_selected_modified, plugin);
 		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
 
 		obs_properties_add_bool(props, "enable", "enable effect");
 
+		obs_property_list_add_string(vst_list, "", "");
 		/*Add VSTs to list*/
 		bool scannable = f.canScanForPlugins();
 		if (scannable) {
-			// StringArray p = get_paths(plugin_format);
-			StringArray p;
+			StringArray p = get_paths(f);
 			if (p.size() < 1) {
 				p = f.searchPathsForPlugins(search, true, true);
-				// set_paths(plugin_format, p);
+				set_paths(f, p);
 			}
 			for (int i = 0; i < p.size(); i++) {
 				juce::String name = f.getNameOfPluginFromIdentifier(p[i]);
@@ -668,8 +714,8 @@ bool obs_module_load(void)
 			JUCE_BUILDNUMBER);
 
 	obs_register_source(&vst3_filter);
-	// obs_register_source(&vst_filter);
-
+	obs_register_source(&vst_filter);
+	//#define DEBUG_JUCE_VST 1
 	if (vst3_filter.type_data) {
 		auto rescan_vst3 = [](void * = nullptr) {
 			if (vst3format.canScanForPlugins())
@@ -677,6 +723,16 @@ bool obs_module_load(void)
 		};
 		obs_frontend_add_tools_menu_item("Rescan VST3", rescan_vst3, nullptr);
 		rescan_vst3();
+#if DEBUG_JUCE_VST
+		for (int i = 0; i < paths.size(); i++) {
+			juce::OwnedArray<juce::PluginDescription> descs;
+			vst3format.findAllTypesForFile(descs, paths[i]);
+			for (int j = 0; j < descs.size(); j++) {
+				std::string n = descs[j]->name.toStdString();
+				blog(LOG_INFO, "[%i][%i]: %s", i, j, n.c_str());
+			}
+		}
+#endif
 	}
 
 	if (vst_filter.type_data) {
@@ -686,6 +742,16 @@ bool obs_module_load(void)
 		};
 		obs_frontend_add_tools_menu_item("Rescan VST", rescan_vst2, nullptr);
 		rescan_vst2();
+#if DEBUG_JUCE_VST
+		for (int i = 0; i < paths_2x.size(); i++) {
+			juce::OwnedArray<juce::PluginDescription> descs;
+			vst2format.findAllTypesForFile(descs, paths[i]);
+			for (int j = 0; j < descs.size(); j++) {
+				std::string n = descs[j]->name.toStdString();
+				blog(LOG_INFO, "[%i][%i]: %s", i, j, n.c_str());
+			}
+		}
+#endif
 	}
 
 	return vst3_filter.type_data || vst_filter.type_data;
