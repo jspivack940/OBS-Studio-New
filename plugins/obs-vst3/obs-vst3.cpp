@@ -133,6 +133,10 @@ private:
 	juce::String      current_file = "";
 	juce::String      current_name = "";
 
+	MidiMessageCollector midi_collector;
+	// std::unique_ptr<MidiInput> midi_input;
+	MidiInput *midi_input = nullptr;
+
 	std::weak_ptr<DialogWindow> dialog;
 	// AudioProcessorEditor *editor;
 	// juce::SharedResourcePointer<AudioProcessorEditor> editor;
@@ -142,6 +146,7 @@ private:
 
 	bool enabled      = true;
 	bool swap         = false;
+	bool updating     = false;
 	bool asynchronous = true;
 
 	std::shared_ptr<VSTHost<pluginformat>> self;
@@ -186,20 +191,19 @@ private:
 	{
 		if (inst) {
 			inst->removeListener(this);
-			/*
 			AudioProcessorEditor *e = inst->getActiveEditor();
 			if (e)
 				delete e;
-				*/
 			inst->releaseResources();
 			delete inst;
 			inst = nullptr;
 		}
 	}
 
-	void change_device(AudioPluginInstance *inst, juce::String err, juce::String state, juce::String file,
+	void change_vst(AudioPluginInstance *inst, juce::String err, juce::String state, juce::String file,
 			juce::String vst_processor, std::vector<std::pair<int, float>> vstsaved)
 	{
+		updating         = true;
 		new_vst_instance = inst;
 		if (err.toStdString().length() > 0) {
 			blog(LOG_WARNING, "failed to load! %s", err.toStdString().c_str());
@@ -244,14 +248,16 @@ private:
 		}
 		current_file = file;
 		swap         = true;
+		updating     = false;
 	}
 
 	void update(obs_data_t *settings)
 	{
+		if (swap || updating)
+			return;
+		updating                                      = true;
 		std::weak_ptr<VSTHost<pluginformat>> tmp_self = self;
 		auto                                 tmp_keep = tmp_self.lock();
-		if (swap)
-			return;
 		if (!tmp_keep) {
 			blog(LOG_INFO, "?");
 			return;
@@ -262,18 +268,44 @@ private:
 
 		obs_audio_info aoi;
 		aoi.samples_per_sec = 48000;
+		bool got_audio = obs_get_audio_info(&aoi);
 
-		juce::String file   = obs_data_get_string(settings, "effect");
-		juce::String plugin = obs_data_get_string(settings, "desc");
-		enabled             = obs_data_get_bool(settings, "enable");
+		juce::String file       = obs_data_get_string(settings, "effect");
+		juce::String plugin     = obs_data_get_string(settings, "desc");
+		juce::String mididevice = obs_data_get_string(settings, "midi");
+		enabled                 = obs_data_get_bool(settings, "enable");
+
+		if (mididevice.compare("") == 0) {
+			if (midi_input) {
+				midi_input->stop();
+				midi_input = nullptr;
+			}
+		} else {
+			juce::StringArray devices     = MidiInput::getDevices();
+			int               deviceindex = 0;
+			for (; deviceindex < devices.size(); deviceindex++) {
+				if (devices[deviceindex].compare(mididevice) == 0)
+					break;
+			}
+			MidiInput *nextdevice = MidiInput::openDevice(deviceindex, &midi_collector);
+			if (midi_input) {
+				midi_input->stop();
+				midi_input = nullptr;
+			}
+			midi_input = nextdevice;
+			if (midi_input)
+				midi_input->start();
+			
+			midi_collector.reset((double)aoi.samples_per_sec);
+		}
 
 		juce::String err;
-
-		auto clear_vst = [this]() {
-			close_vst(new_vst_instance);
-			new_vst_instance = nullptr;
-			desc             = PluginDescription();
-			swap             = true;
+		auto         clear_vst = [this]() {
+                        close_vst(new_vst_instance);
+                        new_vst_instance = nullptr;
+                        desc             = PluginDescription();
+                        swap             = true;
+                        updating         = false;
 		};
 
 		if (file.compare("") == 0 || plugin.compare("") == 0) {
@@ -283,7 +315,6 @@ private:
 			juce::OwnedArray<juce::PluginDescription> descs;
 			plugin_format.findAllTypesForFile(descs, file);
 			if (descs.size() > 0) {
-				obs_get_audio_info(&aoi);
 				if (true) {
 					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
@@ -320,7 +351,7 @@ private:
 									const juce::String & err) {
 						auto myself = tmp_self.lock();
 						if (myself)
-							myself->change_device(inst, err, state, file, vst_processor,
+							myself->change_vst(inst, err, state, file, vst_processor,
 									vstsaved);
 					};
 
@@ -394,8 +425,12 @@ private:
 					break;
 
 			struct obs_audio_info aoi;
-			if (obs_get_audio_info(&aoi))
-				vst_instance->prepareToPlay((double)aoi.samples_per_sec, audio->frames);
+			if (obs_get_audio_info(&aoi)) {
+				double sps = (double)aoi.samples_per_sec;
+				vst_instance->prepareToPlay(sps, audio->frames);
+				midi_collector.removeNextBlockOfMessages(midi, audio->frames);
+				midi_collector.reset(sps);
+			}
 
 			buffer.setDataToReferTo((float **)audio->data, chs, audio->frames);
 			param       = vst_instance->getBypassParameter();
@@ -421,12 +456,20 @@ public:
 
 	VSTHost<pluginformat>(obs_data_t *settings, obs_source_t *source) : context(source)
 	{
+		// midi_input.openDevice(0, midi_collector.handleIncomingMidiMessage);
+		// midi_input = new MidiInput("")
 		self.reset(this);
 		update(settings);
 	}
 
 	~VSTHost<pluginformat>()
 	{
+		if (midi_input) {
+			midi_input->stop();
+			delete midi_input;
+			midi_input = nullptr;
+		}
+
 		obs_data_release(vst_settings);
 		host_close();
 		close_vst(old_vst_instance);
@@ -550,6 +593,26 @@ public:
 		return false;
 	}
 
+	bool midi_modified(obs_properties_t *props, obs_property_t *prop, obs_data_t *settings)
+	{
+		obs_property_list_clear(prop);
+		juce::StringArray devices = MidiInput::getDevices();
+		obs_property_list_add_string(prop, "", "");
+		for (int i = 0; i < devices.size(); i++)
+			obs_property_list_add_string(prop, devices[i].toRawUTF8(), devices[i].toRawUTF8());
+		return false;
+	}
+
+	static bool midi_selected_modified(
+			void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+	{
+		VSTHost<pluginformat> *plugin = static_cast<VSTHost<pluginformat> *>(vptr);
+		if (plugin)
+			return plugin->midi_modified(props, property, settings);
+
+		return false;
+	}
+
 	static bool vst_selected_modified(
 			void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 	{
@@ -566,12 +629,17 @@ public:
 
 		juce::OwnedArray<juce::PluginDescription> descs;
 		f.findAllTypesForFile(descs, file);
+		bool has_options = descs.size() > 1;
+		if (has_options)
+			obs_property_list_add_string(desc_list, "", "");
+
 		for (int i = 0; i < descs.size(); i++) {
 			std::string n = descs[i]->name.toStdString();
 			obs_property_list_add_string(desc_list, n.c_str(), n.c_str());
 		}
 
-		// obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
+		obs_property_set_enabled(desc_list, has_options);
+
 		return true;
 	}
 
@@ -585,6 +653,8 @@ public:
 
 		obs_property_t *vst_list;
 		obs_property_t *desc_list;
+		obs_property_t *midi_list;
+
 		obs_property_t *vst_host_button;
 		obs_property_t *bypass;
 		vst_list = obs_properties_add_list(
@@ -592,6 +662,11 @@ public:
 		desc_list = obs_properties_add_list(
 				props, "desc", "Plugin", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(vst_list, vst_selected_modified, plugin);
+
+		midi_list = obs_properties_add_list(
+				props, "midi", "Midi Input", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+		obs_property_set_modified_callback2(midi_list, midi_selected_modified, plugin);
+
 		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
 
 		obs_properties_add_bool(props, "enable", "enable effect");
