@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2018 by pkv <pkv.stream@gmail.com>, andersama <anderson.john.alexander@gmail.com>
+Copyright (C) 2019 andersama <anderson.john.alexander@gmail.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -15,17 +15,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* For full GPL v2 compatibility it is required to build libs with
- * our open source sdk instead of steinberg sdk , see our fork:
- * https://github.com/pkviet/portaudio , branch : openasio
- * If you build with original asio sdk, you are free to do so to the
- * extent that you do not distribute your binaries.
- */
-
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <JuceHeader.h>
-//#include <juce_audio_processors/juce_audio_processors.h>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-vst3", "en-US")
@@ -795,7 +787,7 @@ bool obs_module_load(void)
 {
 	MessageManager::getInstance();
 
-	struct obs_source_info vst3_filter = {};
+	struct obs_source_info vst3_filter = {0};
 	vst3_filter.id                     = "vst_filter_juce_3x";
 	vst3_filter.type                   = OBS_SOURCE_TYPE_FILTER;
 	vst3_filter.output_flags           = OBS_SOURCE_AUDIO;
@@ -806,10 +798,11 @@ bool obs_module_load(void)
 	vst3_filter.filter_audio           = PluginHost<VST3PluginFormat>::Filter_Audio;
 	vst3_filter.get_properties         = PluginHost<VST3PluginFormat>::Properties;
 	vst3_filter.save                   = PluginHost<VST3PluginFormat>::Save;
+	/*
 	vst3_filter.type_data              = (void *)true;
 	vst3_filter.free_type_data         = free_type_data;
-
-	struct obs_source_info vst_filter = {};
+	*/
+	struct obs_source_info vst_filter = {0};
 	vst_filter.id                     = "vst_filter_juce_2x";
 	vst_filter.type                   = OBS_SOURCE_TYPE_FILTER;
 	vst_filter.output_flags           = OBS_SOURCE_AUDIO;
@@ -820,24 +813,28 @@ bool obs_module_load(void)
 	vst_filter.filter_audio           = PluginHost<VSTPluginFormat>::Filter_Audio;
 	vst_filter.get_properties         = PluginHost<VSTPluginFormat>::Properties;
 	vst_filter.save                   = PluginHost<VSTPluginFormat>::Save;
+	/*
 	vst_filter.type_data              = (void *)true;
 	vst_filter.free_type_data         = free_type_data;
-
+	*/
 	int version = (JUCE_MAJOR_VERSION << 16) | (JUCE_MINOR_VERSION << 8) | JUCE_BUILDNUMBER;
 	blog(LOG_INFO, "JUCE Version: (%i) %i.%i.%i", version, JUCE_MAJOR_VERSION, JUCE_MINOR_VERSION,
 			JUCE_BUILDNUMBER);
 
-	char *iconPath = obs_module_file("obs.png");
+	/*
+	char *iconPath = obs_module_file("obs-studio.ico");
 	juce::String iconStr  = iconPath;
 	juce::File   iconFile = juce::File(iconStr);
 	if (iconStr.length() > 0)
 		windowIcon = ImageFileFormat::loadFrom(iconFile);
 	bfree(iconPath);
+	*/
+	blog(LOG_INFO, "%i", sizeof(vst3_filter));
 
 	obs_register_source(&vst3_filter);
 	obs_register_source(&vst_filter);
 	//#define DEBUG_JUCE_VST 1
-	if (vst3_filter.type_data) {
+	if (true) {
 		auto rescan_vst3 = [](void * = nullptr) {
 			if (vst3format.canScanForPlugins())
 				paths = vst3format.searchPathsForPlugins(search, true, true);
@@ -856,7 +853,7 @@ bool obs_module_load(void)
 #endif
 	}
 
-	if (vst_filter.type_data) {
+	if (true) {
 		auto rescan_vst2 = [](void * = nullptr) {
 			if (vst2format.canScanForPlugins())
 				paths_2x = vst2format.searchPathsForPlugins(search_2x, true, true);
@@ -875,5 +872,10 @@ bool obs_module_load(void)
 #endif
 	}
 
-	return vst3_filter.type_data || vst_filter.type_data;
+	return true;
+}
+
+void obs_module_unload()
+{
+
 }
