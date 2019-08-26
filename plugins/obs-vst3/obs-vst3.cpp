@@ -152,37 +152,51 @@ private:
 	std::shared_ptr<VSTHost<pluginformat>> self;
 	pluginformat                           plugin_format;
 
-	void audioProcessorParameterChanged(AudioProcessor *processor, int parameterIndex, float newValue)
+	void save_state(AudioProcessor *processor)
 	{
-		std::string idx = std::to_string(parameterIndex);
 		if (!vst_settings)
 			vst_settings = obs_data_create();
+		if (processor) {
+			processor->getStateInformation(vst_state);
+			String state = vst_state.toBase64Encoding();
+			obs_data_set_string(vst_settings, "state", state.toStdString().c_str());
+		} else {
+			obs_data_set_string(vst_settings, "state", "");
+		}
+	}
 
+	void load_state(AudioProcessor *processor)
+	{
+		processor->setStateInformation(vst_state.getData(), vst_state.getSize());
+	}
+
+	void audioProcessorParameterChanged(AudioProcessor *processor, int parameterIndex, float newValue)
+	{
+		if (!vst_settings)
+			vst_settings = obs_data_create();
+		
+		std::string idx = std::to_string(parameterIndex);
 		obs_data_set_double(vst_settings, idx.c_str(), newValue);
+		
 		String name = "";
 		if (processor) {
 			name = processor->getName();
-			obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
+			// save_state(processor);
 		}
-
-		processor->getStateInformation(vst_state);
-		String state = vst_state.toBase64Encoding();
-		obs_data_set_string(vst_settings, "state", state.toStdString().c_str());
+		obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
 	}
 
 	void audioProcessorChanged(AudioProcessor *processor)
 	{
 		if (!vst_settings)
 			vst_settings = obs_data_create();
+
 		String name = "";
 		if (processor) {
 			name = processor->getName();
-			obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
+			// save_state(processor);
 		}
-
-		processor->getStateInformation(vst_state);
-		String state = vst_state.toBase64Encoding();
-		obs_data_set_string(vst_settings, "state", state.toStdString().c_str());
+		obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
 	}
 
 	void close_vst(AudioPluginInstance *inst)
@@ -223,20 +237,21 @@ private:
 				juce::MemoryBlock m;
 				m.fromBase64Encoding(state);
 				new_vst_instance->setStateInformation(m.getData(), m.getSize());
-				/*
-				for (int i = 0; i < vstsaved.size(); i++) {
-					int   p = vstsaved[i].first;
-					float v = vstsaved[i].second;
-					new_vst_instance->beginParameterChangeGesture(p);
 
-					new_vst_instance->setParameter(p, v);
-					new_vst_instance->endParameterChangeGesture(p);
+				for (int i = 0; i < vstsaved.size(); i++) {
+					int idx = vstsaved[i].first;
+					float f = vstsaved[i].second;
+					AudioProcessorParameter *param = new_vst_instance->getParameters()[idx];
+					param->beginChangeGesture();
+					param->setValueNotifyingHost(f);
+					param->endChangeGesture();
 				}
-				*/
+
 				vst_settings = obs_data_create();
 			} else {
 				// obs_data_clear(vst_settings);
 			}
+			save_state(new_vst_instance);
 
 			new_vst_instance->addListener(this);
 			current_name = new_vst_processor;
@@ -306,6 +321,7 @@ private:
 		};
 
 		if (file.compare("") == 0 || plugin.compare("") == 0) {
+			host_close();
 			clear_vst();
 		} else if (file.compare(current_file) != 0 || plugin.compare(current_name)) {
 			host_close();
@@ -315,6 +331,7 @@ private:
 				if (true) {
 					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
+					
 					std::vector<std::pair<int, float>> vstsaved;
 					vstsaved.reserve(64);
 
@@ -342,14 +359,13 @@ private:
 						}
 					}
 					obs_data_item_release(&item);
-
-					auto callback = [state, tmp_self, file, vst_processor, vstsaved](
+					
+					auto callback = [state, tmp_self, file, vst_processor](
 									AudioPluginInstance *inst,
 									const juce::String & err) {
 						auto myself = tmp_self.lock();
 						if (myself)
-							myself->change_vst(inst, err, state, file, vst_processor,
-									vstsaved);
+							myself->change_vst(inst, err, state, file, vst_processor, {});
 					};
 
 					bool found = false;
@@ -398,16 +414,16 @@ private:
 
 	void save(obs_data_t *settings)
 	{
+		if (vst_instance)
+			save_state(vst_instance);
 		if (settings && vst_settings)
 			obs_data_apply(settings, vst_settings);
-		// obs_data_set_string(settings, "state", obs_data_get_string(vst_settings, "state"));
 	}
 
 	void filter_audio(struct obs_audio_data *audio)
 	{
-		static obs_audio_info laoi = {};
-		if (swap)
-		{
+		// static obs_audio_info laoi = {};
+		if (swap) {
 			old_vst_instance = vst_instance;
 			vst_instance     = new_vst_instance;
 			new_vst_instance = nullptr;
@@ -425,7 +441,7 @@ private:
 
 			struct obs_audio_info aoi;
 			bool                  audio_info = obs_get_audio_info(&aoi);
-			const double          sps        = (double)aoi.samples_per_sec;
+			double                sps        = (double)aoi.samples_per_sec;
 			if (audio_info)
 				vst_instance->prepareToPlay(sps, audio->frames);
 
@@ -441,9 +457,9 @@ private:
 			}
 			midi.clear();
 
-			if (audio_info && laoi.samples_per_sec != aoi.samples_per_sec) {
+			if (audio_info) {
 				midi_collector.reset(sps);
-				laoi.samples_per_sec = aoi.samples_per_sec;
+				// laoi.samples_per_sec = aoi.samples_per_sec;
 			}
 		}
 	}
