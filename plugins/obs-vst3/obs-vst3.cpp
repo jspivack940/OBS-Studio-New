@@ -302,6 +302,7 @@ private:
 		if (mididevice.compare("") == 0) {
 			if (midi_input) {
 				midi_input->stop();
+				delete midi_input;
 				midi_input = nullptr;
 			}
 		} else {
@@ -314,6 +315,7 @@ private:
 			MidiInput *nextdevice = MidiInput::openDevice(deviceindex, &midi_collector);
 			if (midi_input) {
 				midi_input->stop();
+				delete midi_input;
 				midi_input = nullptr;
 			}
 			midi_input = nextdevice;
