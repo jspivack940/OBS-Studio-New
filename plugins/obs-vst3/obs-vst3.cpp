@@ -237,14 +237,17 @@ private:
 				juce::MemoryBlock m;
 				m.fromBase64Encoding(state);
 				new_vst_instance->setStateInformation(m.getData(), m.getSize());
-
+				new_vst_instance->refreshParameterList();
+				int size = new_vst_instance->getParameters().size();
 				for (int i = 0; i < vstsaved.size(); i++) {
 					int idx = vstsaved[i].first;
 					float f = vstsaved[i].second;
-					AudioProcessorParameter *param = new_vst_instance->getParameters()[idx];
-					param->beginChangeGesture();
-					param->setValueNotifyingHost(f);
-					param->endChangeGesture();
+					if (idx < size) {
+						AudioProcessorParameter *param = new_vst_instance->getParameters()[idx];
+						param->beginChangeGesture();
+						param->setValueNotifyingHost(f);
+						param->endChangeGesture();
+					}
 				}
 
 				vst_settings = obs_data_create();
