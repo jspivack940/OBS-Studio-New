@@ -121,11 +121,11 @@ template<class pluginformat> class VSTHost : private AudioProcessorListener {
 private:
 	juce::AudioBuffer<float> buffer;
 	juce::MidiBuffer         midi;
-
-	AudioPluginInstance *vst_instance     = nullptr;
-	AudioPluginInstance *new_vst_instance = nullptr;
-	AudioPluginInstance *old_vst_instance = nullptr;
-	PluginDescription    desc;
+	juce::MidiBuffer         empty_midi;
+	AudioPluginInstance *    vst_instance     = nullptr;
+	AudioPluginInstance *    new_vst_instance = nullptr;
+	AudioPluginInstance *    old_vst_instance = nullptr;
+	PluginDescription        desc;
 
 	obs_source_t *    context = nullptr;
 	juce::MemoryBlock vst_state;
@@ -164,11 +164,10 @@ private:
 			name = processor->getName();
 			obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
 		}
-		/*
+
 		processor->getStateInformation(vst_state);
 		String state = vst_state.toBase64Encoding();
 		obs_data_set_string(vst_settings, "state", state.toStdString().c_str());
-		*/
 	}
 
 	void audioProcessorChanged(AudioProcessor *processor)
@@ -180,11 +179,10 @@ private:
 			name = processor->getName();
 			obs_data_set_string(vst_settings, "vst_processor", name.toStdString().c_str());
 		}
-		/*
+
 		processor->getStateInformation(vst_state);
 		String state = vst_state.toBase64Encoding();
 		obs_data_set_string(vst_settings, "state", state.toStdString().c_str());
-		*/
 	}
 
 	void close_vst(AudioPluginInstance *inst)
@@ -222,12 +220,10 @@ private:
 			}
 
 			if (!vst_settings && new_vst_processor.compare(vst_processor) == 0) {
-				/*
 				juce::MemoryBlock m;
 				m.fromBase64Encoding(state);
-				new_vst_instance->setStateInformation(
-				m.getData(), m.getSize());
-				*/
+				new_vst_instance->setStateInformation(m.getData(), m.getSize());
+				/*
 				for (int i = 0; i < vstsaved.size(); i++) {
 					int   p = vstsaved[i].first;
 					float v = vstsaved[i].second;
@@ -236,6 +232,7 @@ private:
 					new_vst_instance->setParameter(p, v);
 					new_vst_instance->endParameterChangeGesture(p);
 				}
+				*/
 				vst_settings = obs_data_create();
 			} else {
 				// obs_data_clear(vst_settings);
@@ -268,7 +265,7 @@ private:
 
 		obs_audio_info aoi;
 		aoi.samples_per_sec = 48000;
-		bool got_audio = obs_get_audio_info(&aoi);
+		bool got_audio      = obs_get_audio_info(&aoi);
 
 		juce::String file       = obs_data_get_string(settings, "effect");
 		juce::String plugin     = obs_data_get_string(settings, "desc");
@@ -295,7 +292,7 @@ private:
 			midi_input = nextdevice;
 			if (midi_input)
 				midi_input->start();
-			
+
 			midi_collector.reset((double)aoi.samples_per_sec);
 		}
 
@@ -408,7 +405,9 @@ private:
 
 	void filter_audio(struct obs_audio_data *audio)
 	{
-		if (swap) {
+		static obs_audio_info laoi = {};
+		if (swap)
+		{
 			old_vst_instance = vst_instance;
 			vst_instance     = new_vst_instance;
 			new_vst_instance = nullptr;
@@ -425,20 +424,26 @@ private:
 					break;
 
 			struct obs_audio_info aoi;
-			if (obs_get_audio_info(&aoi)) {
-				double sps = (double)aoi.samples_per_sec;
+			bool                  audio_info = obs_get_audio_info(&aoi);
+			const double          sps        = (double)aoi.samples_per_sec;
+			if (audio_info)
 				vst_instance->prepareToPlay(sps, audio->frames);
-				midi_collector.removeNextBlockOfMessages(midi, audio->frames);
-				midi_collector.reset(sps);
-			}
 
+			midi_collector.removeNextBlockOfMessages(midi, audio->frames);
 			buffer.setDataToReferTo((float **)audio->data, chs, audio->frames);
-			param       = vst_instance->getBypassParameter();
+			param = vst_instance->getBypassParameter();
+
 			bool bypass = (param && param->getValue() != 0.0f);
 			if (bypass) {
 				vst_instance->processBlockBypassed(buffer, midi);
 			} else {
 				vst_instance->processBlock(buffer, midi);
+			}
+			midi.clear();
+
+			if (audio_info && laoi.samples_per_sec != aoi.samples_per_sec) {
+				midi_collector.reset(sps);
+				laoi.samples_per_sec = aoi.samples_per_sec;
 			}
 		}
 	}
