@@ -332,8 +332,8 @@ private:
 					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
 					
-					std::vector<std::pair<int, float>> vstsaved;
-					vstsaved.reserve(64);
+					std::vector<std::pair<int, float>> vst_saved;
+					vst_saved.reserve(64);
 
 					obs_data_item_t *item = NULL;
 					for (item = obs_data_first(settings); item; obs_data_item_next(&item)) {
@@ -349,23 +349,22 @@ private:
 								float f   = 0;
 								if (ntype == OBS_DATA_NUM_DOUBLE) {
 									f = obs_data_item_get_double(item);
-									vstsaved.push_back({idx, f});
+									vst_saved.push_back({idx, f});
 								} else {
-									f = obs_data_item_get_int(item);
-									vstsaved.push_back({idx, f});
+									f = (float)obs_data_item_get_int(item);
+									vst_saved.push_back({idx, f});
 								}
 							} catch (...) {
 							}
 						}
 					}
-					obs_data_item_release(&item);
 					
-					auto callback = [state, tmp_self, file, vst_processor](
+					auto callback = [state, tmp_self, file, vst_processor, vst_saved](
 									AudioPluginInstance *inst,
 									const juce::String & err) {
 						auto myself = tmp_self.lock();
 						if (myself)
-							myself->change_vst(inst, err, state, file, vst_processor, {});
+							myself->change_vst(inst, err, state, file, vst_processor, vst_saved);
 					};
 
 					bool found = false;
