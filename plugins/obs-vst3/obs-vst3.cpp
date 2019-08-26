@@ -60,11 +60,11 @@ VSTPluginFormat  vst2format;
 VST3PluginFormat vst3format;
 const int        obs_output_frames = AUDIO_OUTPUT_FRAMES;
 
-const FileSearchPath search = vst3format.getDefaultLocationsToSearch();
-StringArray          paths  = vst3format.searchPathsForPlugins(search, true, true);
+static FileSearchPath search = vst3format.getDefaultLocationsToSearch();
+StringArray           paths;
 
-const FileSearchPath search_2x = vst2format.getDefaultLocationsToSearch();
-StringArray          paths_2x  = vst2format.searchPathsForPlugins(search_2x, true, true);
+static FileSearchPath search_2x = vst2format.getDefaultLocationsToSearch();
+StringArray           paths_2x;
 
 const volatile int obs_max_channels = get_max_obs_channels();
 
@@ -77,6 +77,9 @@ public:
 		: DialogWindow(name, backgroundColour, escapeKeyTriggersCloseButton, addToDesktop)
 	{
 		self.reset(this);
+		setVisible(false);
+		setOpaque(true);
+		setUsingNativeTitleBar(true);
 	}
 	~VSTWindow()
 	{
@@ -111,8 +114,7 @@ void set_paths(VST3PluginFormat f, StringArray p)
 	paths = p;
 }
 
-template<class pluginformat>
-class VSTHost : private AudioProcessorListener {
+template<class pluginformat> class VSTHost : private AudioProcessorListener {
 private:
 	PluginDescription    desc;
 	AudioPluginInstance *vst_instance     = nullptr;
@@ -125,8 +127,10 @@ private:
 	juce::String      current_file = "";
 	juce::String      current_name = "";
 
-	std::weak_ptr<DialogWindow>           dialog;
-	std::unique_ptr<AudioProcessorEditor> editor;
+	std::weak_ptr<DialogWindow> dialog;
+	// AudioProcessorEditor *editor;
+	//juce::SharedResourcePointer<AudioProcessorEditor> editor;
+	//std::unique_ptr<AudioProcessorEditor> editor;
 
 	juce::AudioProcessorParameter *param = nullptr;
 
@@ -135,7 +139,7 @@ private:
 
 	bool enabled      = true;
 	bool swap         = false;
-	bool asynchronous = false;
+	bool asynchronous = true;
 
 	std::shared_ptr<VSTHost<pluginformat>> self;
 	pluginformat                           plugin_format;
@@ -179,9 +183,11 @@ private:
 	{
 		if (inst) {
 			inst->removeListener(this);
+			/*
 			AudioProcessorEditor *e = inst->getActiveEditor();
 			if (e)
 				delete e;
+				*/
 			inst->releaseResources();
 			delete inst;
 			inst = nullptr;
@@ -239,27 +245,34 @@ private:
 
 	void update(obs_data_t *settings)
 	{
+		std::weak_ptr<VSTHost<pluginformat>> tmp_self = self;
+		auto                                 tmp_keep = tmp_self.lock();
 		if (swap)
 			return;
-		std::weak_ptr<VSTHost<pluginformat>> tmp_self = self;
+		if (!tmp_keep) {
+			blog(LOG_INFO, "?");
+			return;
+		}
 
 		close_vst(old_vst_instance);
 		old_vst_instance = nullptr;
 
 		obs_audio_info aoi;
-		juce::String   file = obs_data_get_string(settings, "effect");
-		enabled             = obs_data_get_bool(settings, "enable");
+		aoi.samples_per_sec = 48000;
+
+		juce::String file = obs_data_get_string(settings, "effect");
+		enabled           = obs_data_get_bool(settings, "enable");
 
 		juce::String err;
-		if (file.compare(current_file) != 0 && file.compare("None") != 0) {
+		if (file.compare(current_file) != 0 && file.compare("") != 0) {
 			host_close();
 			juce::OwnedArray<juce::PluginDescription> descs;
 			plugin_format.findAllTypesForFile(descs, file);
 			if (descs.size() > 0) {
 				blog(LOG_INFO, "%s", descs[0]->name.toStdString().c_str());
 				desc = *descs[0];
-
-				if (obs_get_audio_info(&aoi)) {
+				obs_get_audio_info(&aoi);
+				if (true) {
 					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
 					std::vector<std::pair<int, float>> vstsaved;
@@ -386,14 +399,15 @@ public:
 	{
 		obs_data_release(vst_settings);
 		host_close();
-		close_vsts();
+		close_vst(old_vst_instance);
+		close_vst(vst_instance);
 		close_vst(new_vst_instance);
 	}
 
 	void close_vsts()
 	{
-		close_vst(old_vst_instance);
-		close_vst(vst_instance);
+		//close_vst(old_vst_instance);
+		//close_vst(vst_instance);
 	}
 
 	bool host_is_named(juce::String processor)
@@ -431,13 +445,25 @@ public:
 			}
 			auto d = dialog.lock();
 			if (d) {
-				editor.reset(vst_instance->createEditor());
-				if (editor) {
-					d->setContentNonOwned(editor.get(), true);
+				AudioProcessorEditor *e = vst_instance->getActiveEditor();
+				if (e) {
+					e->setOpaque(true);
+					e->setVisible(true);
+					d->setContentNonOwned(e, true);
 					host_show();
+					/*
 					editor->setOpaque(true);
 					if (!editor->isVisible())
 						editor->setVisible(true);
+						*/
+				} else {
+					e = vst_instance->createEditor();
+					if (e) {
+						e->setOpaque(true);
+						e->setVisible(true);
+						d->setContentNonOwned(e, true);
+						host_show();
+					}
 				}
 			}
 		}
@@ -456,17 +482,11 @@ public:
 						ComponentPeer::StyleFlags::windowHasTitleBar |
 						ComponentPeer::StyleFlags::windowIsResizable);
 				d->addToDesktop(f, h);
+				d->setTopLeftPosition(40, 40);
 			}
 			if (!d->isVisible())
 				d->setVisible(true);
 		}
-	}
-
-	void host_hide()
-	{
-		auto d = dialog.lock();
-		if (d)
-			d->removeFromDesktop();
 	}
 
 	void host_close()
@@ -474,8 +494,7 @@ public:
 		auto d = dialog.lock();
 		if (d)
 			d->closeButtonPressed();
-
-		editor.reset();
+		dialog.reset();
 	}
 
 	bool has_gui()
@@ -509,7 +528,7 @@ public:
 		juce::String           file            = obs_data_get_string(settings, "effect");
 		if (plugin && (!plugin->current_file_is(file) || plugin->old_host()))
 			plugin->host_close();
-		//obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
+		// obs_property_set_enabled(vst_host_button, plugin && plugin->has_gui());
 		return true;
 	}
 
@@ -560,15 +579,14 @@ public:
 	static void Defaults(obs_data_t *settings)
 	{
 		/*Setup Defaults*/
-		obs_data_set_default_string(settings, "effect", "None");
+		obs_data_set_default_string(settings, "effect", "");
 		obs_data_set_default_double(settings, "enable", true);
 	}
 
 	static const char *Name(void *unused)
 	{
 		UNUSED_PARAMETER(unused);
-		std::string type_name = "VSTPlugin.";
-		type_name += typeid(pluginformat).name();
+		static std::string type_name = std::string("VSTPlugin.") + std::string(typeid(pluginformat).name());
 		return obs_module_text(type_name.c_str());
 	}
 
@@ -650,23 +668,24 @@ bool obs_module_load(void)
 			JUCE_BUILDNUMBER);
 
 	obs_register_source(&vst3_filter);
-	obs_register_source(&vst_filter);
+	// obs_register_source(&vst_filter);
 
-	if (vst3_filter.type_data)
-	{
-		auto rescan = [](void *) {
+	if (vst3_filter.type_data) {
+		auto rescan_vst3 = [](void * = nullptr) {
 			if (vst3format.canScanForPlugins())
 				paths = vst3format.searchPathsForPlugins(search, true, true);
 		};
-		obs_frontend_add_tools_menu_item("Rescan VST3", rescan, nullptr);
+		obs_frontend_add_tools_menu_item("Rescan VST3", rescan_vst3, nullptr);
+		rescan_vst3();
 	}
 
 	if (vst_filter.type_data) {
-		auto rescan = [](void *) {
+		auto rescan_vst2 = [](void * = nullptr) {
 			if (vst2format.canScanForPlugins())
 				paths_2x = vst2format.searchPathsForPlugins(search_2x, true, true);
 		};
-		obs_frontend_add_tools_menu_item("Rescan VST", rescan, nullptr);
+		obs_frontend_add_tools_menu_item("Rescan VST", rescan_vst2, nullptr);
+		rescan_vst2();
 	}
 
 	return vst3_filter.type_data || vst_filter.type_data;
