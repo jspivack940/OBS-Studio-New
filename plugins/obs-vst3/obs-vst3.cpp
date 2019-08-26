@@ -134,13 +134,9 @@ private:
 	juce::String      current_name = "";
 
 	MidiMessageCollector midi_collector;
-	// std::unique_ptr<MidiInput> midi_input;
 	MidiInput *midi_input = nullptr;
 
 	std::weak_ptr<DialogWindow> dialog;
-	// AudioProcessorEditor *editor;
-	// juce::SharedResourcePointer<AudioProcessorEditor> editor;
-	// std::unique_ptr<AudioProcessorEditor> editor;
 
 	juce::AudioProcessorParameter *param = nullptr;
 
@@ -150,7 +146,7 @@ private:
 	bool asynchronous = true;
 
 	std::shared_ptr<VSTHost<pluginformat>> self;
-	pluginformat                           plugin_format;
+	pluginformat                    plugin_format;
 
 	void save_state(AudioProcessor *processor)
 	{
@@ -184,10 +180,10 @@ private:
 	{
 		if (!vst_settings)
 			vst_settings = obs_data_create();
-		
+
 		std::string idx = std::to_string(parameterIndex);
 		obs_data_set_double(vst_settings, idx.c_str(), newValue);
-		
+
 		String name = "";
 		if (processor) {
 			name = processor->getName();
@@ -243,8 +239,8 @@ private:
 				new_vst_instance->refreshParameterList();
 				int size = new_vst_instance->getParameters().size();
 				for (int i = 0; i < vstsaved.size(); i++) {
-					int idx = vstsaved[i].first;
-					float f = vstsaved[i].second;
+					int   idx = vstsaved[i].first;
+					float f   = vstsaved[i].second;
 					if (idx < size) {
 						AudioProcessorParameter *param = new_vst_instance->getParameters()[idx];
 						param->beginChangeGesture();
@@ -301,7 +297,7 @@ private:
 		juce::String file       = obs_data_get_string(settings, "effect");
 		juce::String plugin     = obs_data_get_string(settings, "desc");
 		juce::String mididevice = obs_data_get_string(settings, "midi");
-//		enabled                 = obs_data_get_bool(settings, "enable");
+		//		enabled = obs_data_get_bool(settings, "enable");
 
 		if (mididevice.compare("") == 0) {
 			if (midi_input) {
@@ -347,7 +343,7 @@ private:
 				if (true) {
 					String state         = obs_data_get_string(settings, "state");
 					String vst_processor = obs_data_get_string(settings, "vst_processor");
-					
+
 					std::vector<std::pair<int, float>> vst_saved;
 					vst_saved.reserve(64);
 
@@ -374,13 +370,14 @@ private:
 							}
 						}
 					}
-					
+
 					auto callback = [state, tmp_self, file, vst_processor, vst_saved](
 									AudioPluginInstance *inst,
 									const juce::String & err) {
 						auto myself = tmp_self.lock();
 						if (myself)
-							myself->change_vst(inst, err, state, file, vst_processor, vst_saved);
+							myself->change_vst(inst, err, state, file, vst_processor,
+									vst_saved);
 					};
 
 					bool found = false;
@@ -561,11 +558,6 @@ public:
 					e->setVisible(true);
 					d->setContentNonOwned(e, true);
 					host_show();
-					/*
-					editor->setOpaque(true);
-					if (!editor->isVisible())
-						editor->setVisible(true);
-						*/
 				} else {
 					e = vst_instance->createEditor();
 					if (e) {
@@ -695,18 +687,18 @@ public:
 		obs_property_t *vst_host_button;
 		obs_property_t *bypass;
 		vst_list = obs_properties_add_list(
-				props, "effect", "File", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+				props, "effect", obs_module_text("File"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		desc_list = obs_properties_add_list(
-				props, "desc", "Plugin", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+				props, "desc", obs_module_text("Plugin"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(vst_list, vst_selected_modified, plugin);
 
 		midi_list = obs_properties_add_list(
-				props, "midi", "Midi Input", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+				props, "midi", obs_module_text("Midi"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 		obs_property_set_modified_callback2(midi_list, midi_selected_modified, plugin);
 
-		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
+		vst_host_button = obs_properties_add_button2(props, "vst_button", obs_module_text("Show"), vst_host_clicked, plugin);
 
-		//obs_properties_add_bool(props, "enable", "enable effect");
+		// obs_properties_add_bool(props, "enable", "enable effect");
 
 		obs_property_list_add_string(vst_list, "", "");
 		/*Add VSTs to list*/
@@ -744,7 +736,9 @@ public:
 	static const char *Name(void *unused)
 	{
 		UNUSED_PARAMETER(unused);
-		static std::string type_name = std::string("VSTPlugin.") + std::string(typeid(pluginformat).name());
+		static pluginformat       f;
+		static std::string type_name = std::string("VSTPlugin.") + f.getName().toStdString();
+			//std::string(typeid(VSTHost<pluginformat>).name());
 		return obs_module_text(type_name.c_str());
 	}
 
