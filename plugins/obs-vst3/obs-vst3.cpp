@@ -165,6 +165,16 @@ private:
 		}
 	}
 
+	void set_enabled(AudioProcessor *processor, bool value)
+	{
+		juce::AudioProcessorParameter *nparam = processor->getBypassParameter();
+		if (nparam) {
+			nparam->beginChangeGesture();
+			nparam->setValueNotifyingHost(((float)!value) * 1.0f);
+			nparam->endChangeGesture();
+		}
+	}
+
 	void load_state(AudioProcessor *processor)
 	{
 		processor->setStateInformation(vst_state.getData(), vst_state.getSize());
@@ -226,13 +236,6 @@ private:
 			new_vst_instance->prepareToPlay(sample_rate, 2 * obs_output_frames);
 			String new_vst_processor = new_vst_instance->getName();
 
-			juce::AudioProcessorParameter *nparam = new_vst_instance->getBypassParameter();
-			if (nparam) {
-				nparam->beginChangeGesture();
-				nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
-				nparam->endChangeGesture();
-			}
-
 			if (!vst_settings && new_vst_processor.compare(vst_processor) == 0) {
 				juce::MemoryBlock m;
 				m.fromBase64Encoding(state);
@@ -254,6 +257,15 @@ private:
 			} else {
 				// obs_data_clear(vst_settings);
 			}
+
+			/*
+			juce::AudioProcessorParameter *nparam = new_vst_instance->getBypassParameter();
+			if (nparam) {
+				nparam->beginChangeGesture();
+				nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
+				nparam->endChangeGesture();
+			}
+			*/
 			save_state(new_vst_instance);
 
 			new_vst_instance->addListener(this);
@@ -261,6 +273,7 @@ private:
 		} else {
 			current_name = "";
 		}
+
 		current_file = file;
 		swap         = true;
 		updating     = false;
@@ -288,7 +301,7 @@ private:
 		juce::String file       = obs_data_get_string(settings, "effect");
 		juce::String plugin     = obs_data_get_string(settings, "desc");
 		juce::String mididevice = obs_data_get_string(settings, "midi");
-		enabled                 = obs_data_get_bool(settings, "enable");
+//		enabled                 = obs_data_get_bool(settings, "enable");
 
 		if (mididevice.compare("") == 0) {
 			if (midi_input) {
@@ -401,7 +414,7 @@ private:
 				clear_vst();
 			}
 		}
-
+		/*
 		juce::AudioProcessorParameter *nparam;
 		if (vst_instance)
 			nparam = vst_instance->getBypassParameter();
@@ -412,6 +425,7 @@ private:
 			nparam->setValueNotifyingHost(((float)!enabled) * 1.0f);
 			nparam->endChangeGesture();
 		}
+		*/
 	}
 
 	void save(obs_data_t *settings)
@@ -692,7 +706,7 @@ public:
 
 		vst_host_button = obs_properties_add_button2(props, "vst_button", "Show", vst_host_clicked, plugin);
 
-		obs_properties_add_bool(props, "enable", "enable effect");
+		//obs_properties_add_bool(props, "enable", "enable effect");
 
 		obs_property_list_add_string(vst_list, "", "");
 		/*Add VSTs to list*/
