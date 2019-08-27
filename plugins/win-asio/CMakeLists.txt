@@ -20,7 +20,6 @@ set(JUCE_LIB optimized ${JUCE_LIBRARY} debug ${JUCE_LIBRARY_DEBUG})
 add_library(win-asio MODULE
 	${win-asio_SOURCES}
 	${win-asio_HEADERS}
-	${win-asio_QRC_SOURCES}
 )
 
 target_link_libraries(win-asio
