@@ -127,7 +127,7 @@ static std::vector<speaker_layout> known_layouts = {
 
 static std::vector<std::string> known_layouts_str = {"Mono", "Stereo", "2.1", "4.0", "4.1", "5.1", "7.1"};
 
-class AudioCB : public juce::AudioIODeviceCallback, public AudioFormatWriter::ThreadedWriter::IncomingDataReceiver {
+class AudioCB : public juce::AudioIODeviceCallback {
 private:
 	AudioIODevice *  _device = nullptr;
 	char *           _name   = nullptr;
@@ -158,13 +158,14 @@ public:
 
 		bool     active;
 		int      read_index = 0;
+		int      wait_time  = 4;
 		AudioCB *callback;
 		AudioCB *current_callback;
 
 		size_t   silent_buffer_size = 0;
 		uint8_t *silent_buffer      = nullptr;
 
-		bool set_data(AudioBufferInfo *info, obs_source_audio &out, const std::vector<short> &route)
+		bool set_data(AudioBufferInfo *info, obs_source_audio &out, const std::vector<short> &route, int *sample_rate)
 		{
 			out.speakers        = in.speakers;
 			out.samples_per_sec = info->out.samples_per_sec;
@@ -172,6 +173,7 @@ public:
 			out.timestamp       = info->out.timestamp;
 			out.frames          = info->buffer.getNumSamples();
 
+			*sample_rate = out.samples_per_sec;
 			// cache a silent buffer
 			size_t buffer_size = (out.frames * sizeof(bytedepth_format(out.format)));
 			if (silent_buffer_size < buffer_size) {
@@ -256,18 +258,26 @@ public:
 		{
 			if (!active || callback != current_callback)
 				return -1;
-			int m           = callback->buffers.size();
 			int write_index = callback->write_index();
-			std::vector<short> route       = _route; 
+			if (read_index == write_index)
+				return wait_time;
+
+			std::vector<short> route       = _route;
+			int                sample_rate = 0;
+			int                max_sample_rate = 1;
+			int                m               = callback->buffers.size();
+
 			while (read_index != write_index) {
 				obs_source_audio out;
-				bool             unmuted = set_data(&callback->buffers[read_index], out, route);
+				bool             unmuted = set_data(&callback->buffers[read_index], out, route, &sample_rate);
 				if (unmuted && out.speakers)
 					obs_source_output_audio(source, &out);
+				if (sample_rate > max_sample_rate)
+					max_sample_rate = sample_rate;
 				read_index = (read_index + 1) % m;
 			}
-
-			return 4;
+			wait_time = ((1000 / 2) * AUDIO_OUTPUT_FRAMES) / max_sample_rate;
+			return wait_time;
 		}
 	};
 
@@ -287,15 +297,6 @@ public:
 		if (_name)
 			bfree(_name);
 		_name = bstrdup(name);
-	}
-
-	void reset(int numChannels, double sampleRate, int64 totalSamplesInSource)
-	{
-	}
-
-	void addBlock(int64 sampleNumberInSource, const AudioBuffer<float> &newData, int startOffsetInBuffer,
-			int numSamples)
-	{
 	}
 
 	AudioCB(AudioIODevice *device, const char *name)
@@ -445,7 +446,7 @@ public:
 		obs_property_t *              devices;
 		obs_property_t *              format;
 		obs_property_t *              panel;
-		int                           max_channels = get_obs_output_channels();
+		int                           max_channels = get_max_obs_channels();
 		std::vector<obs_property_t *> route(max_channels, nullptr);
 
 		props   = obs_properties_create();
@@ -461,7 +462,6 @@ public:
 			obs_property_list_add_int(format, known_layouts_str[i].c_str(), known_layouts[i]);
 		obs_property_set_modified_callback(format, asio_layout_changed);
 
-		unsigned int recorded_channels = get_obs_output_channels();
 		for (size_t i = 0; i < max_channels; i++) {
 			route[i] = obs_properties_add_list(props, ("route " + std::to_string(i)).c_str(),
 					obs_module_text(("Route." + std::to_string(i)).c_str()), OBS_COMBO_TYPE_LIST,
@@ -679,9 +679,6 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 	speaker_layout                layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 
 	int recorded_channels = get_audio_channels(layout);
-	// get channel number from output speaker layout set by obs
-	// DWORD recorded_channels = get_obs_output_channels();
-	// be sure to set device as current one
 
 	size_t itemCount = obs_property_list_item_count(list);
 	bool   itemFound = false;
