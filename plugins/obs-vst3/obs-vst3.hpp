@@ -204,14 +204,13 @@ private:
 			return;
 		updating                                         = true;
 		std::weak_ptr<PluginHost<pluginformat>> tmp_self = weak_from_this();
-		/*
-		std::weak_ptr<PluginHost<pluginformat>> tmp_self = self;
+		
+		//std::weak_ptr<PluginHost<pluginformat>> tmp_self = self;
 		auto                                    tmp_keep = tmp_self.lock();
 		if (!tmp_keep) {
 			blog(LOG_INFO, "?");
 			return;
 		}
-		*/
 
 		close_vst(old_vst_instance);
 		old_vst_instance = nullptr;
@@ -416,36 +415,36 @@ public:
 		return plugin_format;
 	}
 
-	PluginHost<pluginformat>(obs_data_t *settings, obs_source_t *source) : context(source)
+	PluginHost<pluginformat>(obs_data_t *settings = nullptr, obs_source_t *source = nullptr) : context(source)
 	{
 		// midi_input.openDevice(0, midi_collector.handleIncomingMidiMessage);
 		// midi_input = new MidiInput("")
 		// self.reset(this);
-		update(settings);
+		// update(settings);
 	}
 
 	~PluginHost<pluginformat>()
 	{
-		/*
 		if (midi_input) {
 			midi_input->stop();
 			delete midi_input;
 			midi_input = nullptr;
 		}
-		*/
-		// obs_data_release(vst_settings);
-		// host_close();
-		/*
+		
+		obs_data_release(vst_settings);
+		host_close();
+		
 		if (old_vst_instance)
 			delete old_vst_instance;
 		if (vst_instance) {
 			//delete vst_instance->getActiveEditor();
 			//vst_instance->releaseResources();
-			//delete vst_instance;
+			delete vst_instance;
 		}
 		if (new_vst_instance)
 			delete new_vst_instance;
-		*/
+		
+		//obs_source_release(context);
 	}
 
 	void close_vsts()
@@ -603,218 +602,219 @@ public:
 	}
 
 
-		static bool midi_selected_modified(
-				void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
-		{
-			obs_property_list_clear(property);
-			juce::StringArray devices = MidiInput::getDevices();
-			obs_property_list_add_string(property, "", "");
-			for (int i = 0; i < devices.size(); i++)
-				obs_property_list_add_string(property, devices[i].toRawUTF8(), devices[i].toRawUTF8());
+	static bool midi_selected_modified(
+			void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+	{
+		obs_property_list_clear(property);
+		juce::StringArray devices = MidiInput::getDevices();
+		obs_property_list_add_string(property, "", "");
+		for (int i = 0; i < devices.size(); i++)
+			obs_property_list_add_string(property, devices[i].toRawUTF8(), devices[i].toRawUTF8());
 
-			return false;
-		}
+		return false;
+	}
 
-		static bool vst_selected_modified(
-				void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
-		{
-			static pluginformat f;
+	static bool vst_selected_modified(
+			void *vptr, obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
+	{
+		static pluginformat f;
 
-			// PluginHost<pluginformat> *plugin          = static_cast<PluginHost<pluginformat> *>(vptr);
-			obs_property_t *vst_host_button = obs_properties_get(props, "vst_button");
-			obs_property_t *desc_list       = obs_properties_get(props, "desc");
-			juce::String    file            = obs_data_get_string(settings, "effect");
-			/*
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-			if (plugin && plugin->use_count()) {
-				auto tmp = *plugin;
-				if (tmp && (!tmp->current_file_is(file) || tmp->old_host())) {
-					tmp->host_close();
-				}
+		// PluginHost<pluginformat> *plugin          = static_cast<PluginHost<pluginformat> *>(vptr);
+		obs_property_t *vst_host_button = obs_properties_get(props, "vst_button");
+		obs_property_t *desc_list       = obs_properties_get(props, "desc");
+		juce::String    file            = obs_data_get_string(settings, "effect");
+		/*
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+		if (plugin && plugin->use_count()) {
+			auto tmp = *plugin;
+			if (tmp && (!tmp->current_file_is(file) || tmp->old_host())) {
+				tmp->host_close();
 			}
-			*/
-			/*
-			if (plugin) {
-				std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
-				if (self && (!self->current_file_is(file) || self->old_host()))
-					self->host_close();
+		}
+		*/
+		/*
+		if (plugin) {
+			std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
+			if (self && (!self->current_file_is(file) || self->old_host()))
+				self->host_close();
+		}
+		*/
+
+		/*
+		if (plugin && (!plugin->current_file_is(file) || plugin->old_host()))
+			plugin->host_close();
+		*/
+		obs_property_list_clear(desc_list);
+
+		juce::OwnedArray<juce::PluginDescription> descs;
+		f.findAllTypesForFile(descs, file);
+		bool has_options = descs.size() > 1;
+		if (has_options)
+			obs_property_list_add_string(desc_list, "", "");
+
+		for (int i = 0; i < descs.size(); i++) {
+			std::string n = descs[i]->name.toStdString();
+			obs_property_list_add_string(desc_list, n.c_str(), n.c_str());
+		}
+
+		obs_property_set_enabled(desc_list, has_options);
+		return true;
+	}
+
+	static obs_properties_t *Properties(void *vptr)
+	{
+		static pluginformat f;
+		// PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+
+		obs_properties_t *props;
+		props = obs_properties_create();
+
+		obs_property_t *vst_list;
+		obs_property_t *desc_list;
+		obs_property_t *midi_list;
+
+		obs_property_t *vst_host_button;
+		obs_property_t *bypass;
+		vst_list  = obs_properties_add_list(props, "effect", obs_module_text("File"),
+                                OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+		desc_list = obs_properties_add_list(props, "desc", obs_module_text("Plugin"),
+				OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+		obs_property_set_modified_callback2(vst_list, vst_selected_modified, nullptr);
+
+		midi_list = obs_properties_add_list(props, "midi", obs_module_text("Midi"), OBS_COMBO_TYPE_LIST,
+				OBS_COMBO_FORMAT_STRING);
+		obs_property_set_modified_callback2(midi_list, midi_selected_modified, nullptr);
+
+		vst_host_button = obs_properties_add_button2(
+				props, "vst_button", obs_module_text("Show"), vst_host_clicked, plugin);
+
+		// obs_properties_add_bool(props, "enable", "enable effect");
+
+		obs_property_list_add_string(vst_list, "", "");
+		/*Add VSTs to list*/
+		bool scannable = f.canScanForPlugins();
+		if (scannable) {
+			StringArray p = get_paths(f);
+			if (p.size() < 1) {
+				p = f.searchPathsForPlugins(search, true, true);
+				set_paths(f, p);
 			}
-			*/
-
-			/*
-			if (plugin && (!plugin->current_file_is(file) || plugin->old_host()))
-				plugin->host_close();
-			*/
-			obs_property_list_clear(desc_list);
-
-			juce::OwnedArray<juce::PluginDescription> descs;
-			f.findAllTypesForFile(descs, file);
-			bool has_options = descs.size() > 1;
-			if (has_options)
-				obs_property_list_add_string(desc_list, "", "");
-
-			for (int i = 0; i < descs.size(); i++) {
-				std::string n = descs[i]->name.toStdString();
-				obs_property_list_add_string(desc_list, n.c_str(), n.c_str());
+			for (int i = 0; i < p.size(); i++) {
+				juce::String name = f.getNameOfPluginFromIdentifier(p[i]);
+				obs_property_list_add_string(vst_list, p[i].toStdString().c_str(),
+						name.toStdString().c_str());
 			}
-
-			obs_property_set_enabled(desc_list, has_options);
-			return true;
 		}
 
-		static obs_properties_t *Properties(void *vptr)
-		{
-			static pluginformat f;
-			// PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+		return props;
+	}
 
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-
-			obs_properties_t *props;
-			props = obs_properties_create();
-
-			obs_property_t *vst_list;
-			obs_property_t *desc_list;
-			obs_property_t *midi_list;
-
-			obs_property_t *vst_host_button;
-			obs_property_t *bypass;
-			vst_list  = obs_properties_add_list(props, "effect", obs_module_text("File"),
-                                        OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-			desc_list = obs_properties_add_list(props, "desc", obs_module_text("Plugin"),
-					OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-			obs_property_set_modified_callback2(vst_list, vst_selected_modified, nullptr);
-
-			midi_list = obs_properties_add_list(props, "midi", obs_module_text("Midi"), OBS_COMBO_TYPE_LIST,
-					OBS_COMBO_FORMAT_STRING);
-			obs_property_set_modified_callback2(midi_list, midi_selected_modified, nullptr);
-
-			vst_host_button = obs_properties_add_button2(
-					props, "vst_button", obs_module_text("Show"), vst_host_clicked, plugin);
-
-			// obs_properties_add_bool(props, "enable", "enable effect");
-
-			obs_property_list_add_string(vst_list, "", "");
-			/*Add VSTs to list*/
-			bool scannable = f.canScanForPlugins();
-			if (scannable) {
-				StringArray p = get_paths(f);
-				if (p.size() < 1) {
-					p = f.searchPathsForPlugins(search, true, true);
-					set_paths(f, p);
-				}
-				for (int i = 0; i < p.size(); i++) {
-					juce::String name = f.getNameOfPluginFromIdentifier(p[i]);
-					obs_property_list_add_string(vst_list, p[i].toStdString().c_str(),
-							name.toStdString().c_str());
-				}
-			}
-
-			return props;
+	static void Update(void *vptr, obs_data_t *settings)
+	{
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+		if (plugin) {
+			auto tmp = *plugin;
+			if (tmp)
+				tmp->update(settings);
 		}
-
-		static void Update(void *vptr, obs_data_t *settings)
-		{
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-			if (plugin) {
-				auto tmp = *plugin;
-				if (tmp)
-					tmp->update(settings);
-			}
-			/*
-			PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
-			if (plugin) {
-				std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
-				self->update(settings);
-			}
-			*/
+		/*
+		PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+		if (plugin) {
+			std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
+			self->update(settings);
 		}
+		*/
+	}
 
-		static void Defaults(obs_data_t * settings)
-		{
-			/*Setup Defaults*/
-			obs_data_set_default_string(settings, "effect", "");
+	static void Defaults(obs_data_t * settings)
+	{
+		/*Setup Defaults*/
+		obs_data_set_default_string(settings, "effect", "");
+	}
+
+	static const char *Name(void *unused)
+	{
+		UNUSED_PARAMETER(unused);
+		static pluginformat f;
+		static std::string  type_name = std::string("VSTPlugin.") + f.getName().toStdString();
+		// std::string(typeid(PluginHost<pluginformat>).name());
+		return obs_module_text(type_name.c_str());
+	}
+
+	static void *Create(obs_data_t * settings, obs_source_t * source)
+	{
+		std::shared_ptr<PluginHost<pluginformat>> *ptr = new std::shared_ptr<PluginHost<pluginformat>>;
+		*ptr = std::make_shared<PluginHost<pluginformat>>(settings, source);
+		ptr->get()->update(settings);
+		return ptr;
+		// new PluginHost<pluginformat>(settings, source);
+	}
+
+	static void Save(void *vptr, obs_data_t *settings)
+	{
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+		if (plugin) {
+			auto tmp = *plugin;
+			if (tmp)
+				tmp->save(settings);
 		}
-
-		static const char *Name(void *unused)
-		{
-			UNUSED_PARAMETER(unused);
-			static pluginformat f;
-			static std::string  type_name = std::string("VSTPlugin.") + f.getName().toStdString();
-			// std::string(typeid(PluginHost<pluginformat>).name());
-			return obs_module_text(type_name.c_str());
+		// PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+		/*
+		if (plugin) {
+			std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
+			self->save(settings);
 		}
+		*/
+	}
 
-		static void *Create(obs_data_t * settings, obs_source_t * source)
-		{
-			std::shared_ptr<PluginHost<pluginformat>> *ptr = new std::shared_ptr<PluginHost<pluginformat>>;
-			*ptr = std::make_shared<PluginHost<pluginformat>>(settings, source);
-			return ptr;
-			// new PluginHost<pluginformat>(settings, source);
-		}
+	void destroy()
+	{
+		self.reset();
+	}
 
-		static void Save(void *vptr, obs_data_t *settings)
-		{
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-			if (plugin) {
-				auto tmp = *plugin;
-				if (tmp)
-					tmp->save(settings);
-			}
-			// PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
-			/*
-			if (plugin) {
-				std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
-				self->save(settings);
-			}
-			*/
-		}
-
-		void destroy()
-		{
-			self.reset();
-		}
-
-		static void Destroy(void *vptr)
-		{
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-			if (plugin)
-				plugin->reset();
+	static void Destroy(void *vptr)
+	{
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+		if (plugin)
+			plugin->reset();
+		delete plugin;
+		/*
+		PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+		if (plugin) {
 			delete plugin;
-			/*
-			PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
-			if (plugin) {
-				delete plugin;
-				std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
-				self->close_vsts();
-				self->destroy();
+			std::shared_ptr<PluginHost<pluginformat>> self = plugin->get();
+			self->close_vsts();
+			self->destroy();
 				
-			}
-			*/
-			plugin = nullptr;
 		}
+		*/
+		plugin = nullptr;
+	}
 
-		static struct obs_audio_data *Filter_Audio(void *vptr, struct obs_audio_data *audio)
-		{
-			std::shared_ptr<PluginHost<pluginformat>> *plugin =
-					static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
-			if (plugin && plugin->use_count()) {
-				plugin->get()->filter_audio(audio);
-				/*
-				auto tmp = *plugin;
-				if (tmp) {
-					tmp->filter_audio(audio);
-				}
-				*/
-			}
+	static struct obs_audio_data *Filter_Audio(void *vptr, struct obs_audio_data *audio)
+	{
+		std::shared_ptr<PluginHost<pluginformat>> *plugin =
+				static_cast<std::shared_ptr<PluginHost<pluginformat>> *>(vptr);
+		if (plugin && plugin->use_count()) {
+			plugin->get()->filter_audio(audio);
 			/*
-			PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
-			plugin->filter_audio(audio);
+			auto tmp = *plugin;
+			if (tmp) {
+				tmp->filter_audio(audio);
+			}
 			*/
-			return audio;
 		}
-	};
+		/*
+		PluginHost<pluginformat> *plugin = static_cast<PluginHost<pluginformat> *>(vptr);
+		plugin->filter_audio(audio);
+		*/
+		return audio;
+	}
+};
