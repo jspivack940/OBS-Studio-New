@@ -599,11 +599,11 @@ static bool init_avformat(mp_media_t *m)
 		m->fmt->interrupt_callback.opaque = m;
 	}
 
-	int ret = avformat_open_input(&m->fmt, m->path, format,
+	int ret2 = avformat_open_input(&m->fmt, m->path, format,
 				      opts ? &opts : NULL);
 	av_dict_free(&opts);
 
-	if (ret < 0) {
+	if (ret2 < 0) {
 		blog(LOG_WARNING, "MP: Failed to open media: '%s'", m->path);
 		return false;
 	}
