@@ -28,6 +28,11 @@ struct ffmpeg_cfg {
 	int scale_height;
 	int width;
 	int height;
+	bool is_encoded_output;
+	uint8_t *video_extradata;
+	int video_extradata_size;
+	uint8_t *audio_extradata;
+	int audio_extradata_size;
 };
 
 struct ffmpeg_data {

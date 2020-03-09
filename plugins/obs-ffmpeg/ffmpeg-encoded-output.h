@@ -57,7 +57,8 @@ struct ffmpeg_encoded_output {
 
 	pthread_mutex_t packets_mutex;
 	struct circlebuf packets;
-	bool sent_sps_pps;
+//	bool sent_sps_pps;
+	bool sent_headers;
 
 	bool got_first_video;
 	int64_t start_dts_offset;
@@ -67,6 +68,8 @@ struct ffmpeg_encoded_output {
 
 	volatile bool active;
 	volatile bool disconnected;
+	volatile bool stopping;
+	volatile bool encode_error;
 	pthread_t send_thread;
 
 	int max_shutdown_time_sec;
@@ -80,28 +83,10 @@ struct ffmpeg_encoded_output {
 	struct dstr username, password;
 	struct dstr encoder_name;
 
-	/* frame drop variables */
-	int64_t drop_threshold_usec;
-	int64_t pframe_drop_threshold_usec;
-	int min_priority;
-	float congestion;
-
 	int64_t last_dts_usec;
 
 	uint64_t total_bytes_sent;
-	int dropped_frames;
 
-#ifdef TEST_FRAMEDROPS
-	struct circlebuf droptest_info;
-	size_t droptest_size;
-#endif
-
-	uint8_t *write_buf;
-	size_t write_buf_len;
-	size_t write_buf_size;
-	pthread_mutex_t write_buf_mutex;
-	os_event_t *buffer_space_available_event;
-	os_event_t *buffer_has_data_event;
 	os_event_t *send_thread_signaled_exit;
 
 	struct ffmpeg_data ff_data;

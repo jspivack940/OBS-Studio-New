@@ -234,8 +234,17 @@ static bool create_video_stream(struct ffmpeg_data *data)
 	if (data->output->oformat->flags & AVFMT_GLOBALHEADER)
 		context->flags |= CODEC_FLAG_GLOBAL_H;
 
-	if (!open_video_codec(data))
-		return false;
+	if (data->config.is_encoded_output) {
+		context->extradata = av_memdup(data->config.video_extradata,
+			data->config.video_extradata_size);
+		context->extradata_size = data->config.video_extradata_size;
+		data->video->id = 0;
+	}
+	if (!data->config.is_encoded_output) {
+		if (!open_video_codec(data))
+			return false;
+	}
+
 
 	if (context->pix_fmt != data->config.format ||
 	    data->config.width != data->config.scale_width ||
@@ -338,7 +347,14 @@ static bool create_audio_stream(struct ffmpeg_data *data, int idx)
 	if (data->output->oformat->flags & AVFMT_GLOBALHEADER)
 		context->flags |= CODEC_FLAG_GLOBAL_H;
 
-	return open_audio_codec(data, idx);
+	if (data->config.is_encoded_output) {
+		context->extradata = av_memdup(data->config.audio_extradata,
+			data->config.audio_extradata_size);
+		context->extradata_size = data->config.audio_extradata_size;
+		data->audio_streams[idx]->id = 1;
+	}
+
+	return data->config.is_encoded_output? 1:open_audio_codec(data, idx);
 }
 
 static inline bool init_streams(struct ffmpeg_data *data)
@@ -1047,7 +1063,7 @@ static bool try_connect(struct ffmpeg_output *output)
 		obs_to_ffmpeg_video_format(video_output_get_format(video));
 	config.audio_tracks = (int)obs_output_get_mixers(output->output);
 	config.audio_mix_count = get_audio_mix_count(config.audio_tracks);
-
+	config.is_encoded_output = false;
 	if (format_is_yuv(voi->format)) {
 		config.color_range = voi->range == VIDEO_RANGE_FULL
 					     ? AVCOL_RANGE_JPEG

@@ -25,7 +25,6 @@ static void proto_close(struct ffmpeg_encoded_output *stream);
 static void proto_set_output_error(struct ffmpeg_encoded_output *stream);
 static int proto_send_packet(struct ffmpeg_encoded_output *stream,
 			     struct encoder_packet *packet, bool is_header);
-
 static inline size_t num_buffered_packets(struct ffmpeg_encoded_output *stream);
 static inline void free_packets(struct ffmpeg_encoded_output *stream);
 static inline bool stopping(struct ffmpeg_encoded_output *stream);
@@ -34,10 +33,6 @@ static inline bool active(struct ffmpeg_encoded_output *stream);
 static inline bool disconnected(struct ffmpeg_encoded_output *stream);
 static inline bool get_next_packet(struct ffmpeg_encoded_output *stream,
 				   struct encoder_packet *packet);
-#ifdef TEST_FRAMEDROPS
-static void droptest_cap_data_rate(struct ffmpeg_encoded_output *stream,
-				   size_t size);
-#endif
 static inline bool can_shutdown_stream(struct ffmpeg_encoded_output *stream,
 				       struct encoder_packet *packet);
 static void *send_thread(void *data);
@@ -48,13 +43,8 @@ static int init_send(struct ffmpeg_encoded_output *stream);
 static void *connect_thread(void *data);
 static inline bool add_packet(struct ffmpeg_encoded_output *stream,
 			      struct encoder_packet *packet);
-static inline size_t num_buffered_packets(struct ffmpeg_encoded_output *stream);
-static void drop_frames(struct ffmpeg_encoded_output *stream, const char *name,
-			int highest_priority, bool pframes);
 static bool find_first_video_packet(struct ffmpeg_encoded_output *stream,
 				    struct encoder_packet *first);
-static void check_to_drop_frames(struct ffmpeg_encoded_output *stream,
-				 bool pframes);
 static bool add_video_packet(struct ffmpeg_encoded_output *stream,
 			     struct encoder_packet *packet);
 
@@ -77,18 +67,6 @@ static inline bool add_packet(struct ffmpeg_encoded_output *stream,
 static bool add_video_packet(struct ffmpeg_encoded_output *stream,
 			     struct encoder_packet *packet)
 {
-	check_to_drop_frames(stream, false);
-	check_to_drop_frames(stream, true);
-
-	/* if currently dropping frames, drop packets until it reaches the
-	 * desired priority */
-	if (packet->drop_priority < stream->min_priority) {
-		stream->dropped_frames++;
-		return false;
-	} else {
-		stream->min_priority = 0;
-	}
-
 	stream->last_dts_usec = packet->dts_usec;
 
 	return add_packet(stream, packet);
@@ -148,40 +126,47 @@ static inline bool disconnected(struct ffmpeg_encoded_output *stream)
 	return os_atomic_load_bool(&stream->disconnected);
 }
 
-#ifdef TEST_FRAMEDROPS
-static void droptest_cap_data_rate(struct ffmpeg_encoded_output *stream,
-				   size_t size)
+static bool send_audio_header(struct ffmpeg_encoded_output *stream)
 {
-	uint64_t ts = os_gettime_ns();
-	struct droptest_info info;
+	obs_output_t *context = stream->output;
+	obs_encoder_t *aencoder = obs_output_get_audio_encoder(context, 0);
+	uint8_t *header;
 
-	info.ts = ts;
-	info.size = size;
-
-	circlebuf_push_back(&stream->droptest_info, &info, sizeof(info));
-	stream->droptest_size += size;
-
-	if (stream->droptest_info.size) {
-		circlebuf_peek_front(&stream->droptest_info, &info,
-				     sizeof(info));
-
-		if (stream->droptest_size > DROPTEST_MAX_BYTES) {
-			uint64_t elapsed = ts - info.ts;
-
-			if (elapsed < 1000000000ULL) {
-				elapsed = 1000000000ULL - elapsed;
-				os_sleepto_ns(ts + elapsed);
-			}
-
-			while (stream->droptest_size > DROPTEST_MAX_BYTES) {
-				circlebuf_pop_front(&stream->droptest_info,
-						    &info, sizeof(info));
-				stream->droptest_size -= info.size;
-			}
-		}
-	}
+	struct encoder_packet packet = { .type = OBS_ENCODER_AUDIO,
+					.timebase_den = 1 };
+	obs_encoder_get_extra_data(aencoder, &header, &packet.size);
+	packet.data = bmemdup(header, packet.size);
+	return proto_send_packet(stream, &packet, true) >= 0;
 }
-#endif
+
+static bool send_video_header(struct ffmpeg_encoded_output *stream)
+{
+	obs_output_t *context = stream->output;
+	obs_encoder_t *vencoder = obs_output_get_video_encoder(context);
+	uint8_t *header;
+	size_t size;
+
+	struct encoder_packet packet = {
+		.type = OBS_ENCODER_VIDEO,.timebase_den = 1,.keyframe = true };
+
+	//obs_encoder_get_extra_data(vencoder, &header, &size);
+	//packet.size = obs_parse_avc_header(&packet.data, header, size);
+	obs_encoder_get_extra_data(vencoder, &header, &packet.size);
+	packet.data = bmemdup(header, packet.size);
+	return proto_send_packet(stream, &packet, true) >= 0;
+}
+
+static inline bool send_headers(struct ffmpeg_encoded_output *stream)
+{
+	stream->sent_headers = true;
+
+	if (!send_audio_header(stream))
+		return false;
+	if (!send_video_header(stream))
+		return false;
+
+	return true;
+}
 
 static void *send_thread(void *data)
 {
@@ -204,22 +189,34 @@ static void *send_thread(void *data)
 				break;
 			}
 		}
-		if (!stream->sent_sps_pps) {
-			if (!send_sps_pps(stream)) {
+		//if (!stream->sent_sps_pps) {
+		//	if (!send_sps_pps(stream)) {
+		//		os_atomic_set_bool(&stream->disconnected, true);
+		//		break;
+		//	}
+		//}
+		if (!stream->sent_headers) {
+			if (!send_headers(stream)) {
 				os_atomic_set_bool(&stream->disconnected, true);
 				break;
 			}
 		}
+
 		if (proto_send_packet(stream, &packet, false) < 0) {
 			os_atomic_set_bool(&stream->disconnected, true);
 			break;
 		}
 	}
 
-	if (disconnected(stream))
+	bool encode_error = os_atomic_load_bool(&stream->encode_error);
+
+	if (disconnected(stream)) {
 		info("Disconnected from %s", stream->path.array);
-	else
+	} else if (encode_error) {
+		info("Encoder error, disconnecting");
+	} else {
 		info("User stopped the stream");
+	}
 
 	proto_set_output_error(stream);
 	proto_close(stream);
@@ -227,6 +224,8 @@ static void *send_thread(void *data)
 	if (!stopping(stream)) {
 		pthread_detach(stream->send_thread);
 		obs_output_signal_stop(stream->output, OBS_OUTPUT_DISCONNECTED);
+	} else if (encode_error) {
+		obs_output_signal_stop(stream->output, OBS_OUTPUT_ENCODE_ERROR);
 	} else {
 		obs_output_end_data_capture(stream->output);
 	}
@@ -234,26 +233,27 @@ static void *send_thread(void *data)
 	free_packets(stream);
 	os_event_reset(stream->stop_event);
 	os_atomic_set_bool(&stream->active, false);
-	stream->sent_sps_pps = false;
+	stream->sent_headers = false;
 
 	return NULL;
 }
-
-static bool send_sps_pps(struct ffmpeg_encoded_output *stream)
-{
-	obs_output_t *context = stream->output;
-	obs_encoder_t *vencoder = obs_output_get_video_encoder(context);
-	uint8_t *header;
-	struct encoder_packet packet = {
-		.type = OBS_ENCODER_VIDEO, .timebase_den = 1, .keyframe = true};
-
-	if (obs_encoder_get_extra_data(vencoder, &header, &packet.size)) {
-		packet.data = bmemdup(header, packet.size);
-		stream->sent_sps_pps =
-			proto_send_packet(stream, &packet, true) >= 0;
-	}
-	return stream->sent_sps_pps;
-}
+//
+//static bool send_sps_pps(struct ffmpeg_encoded_output *stream)
+//{
+//	obs_output_t *context = stream->output;
+//	obs_encoder_t *vencoder = obs_output_get_video_encoder(context);
+//	uint8_t *header;
+//	struct encoder_packet packet = {
+//		.type = OBS_ENCODER_VIDEO, .timebase_den = 1, .keyframe = true};
+//
+//	if (obs_encoder_get_extra_data(vencoder, &header, &packet.size)) {
+//		packet.data = bmemdup(header, packet.size);
+//		stream->sent_sps_pps =
+//			proto_send_packet(stream, &packet, true) >= 0;
+//	}
+//	return stream->sent_sps_pps;
+//}
+//
 
 static inline bool reset_semaphore(struct ffmpeg_encoded_output *stream)
 {
@@ -266,8 +266,6 @@ static bool init_connect(struct ffmpeg_encoded_output *stream)
 {
 	obs_service_t *service;
 	obs_data_t *settings;
-	int64_t drop_p;
-	int64_t drop_b;
 
 	if (stopping(stream))
 		pthread_join(stream->send_thread, NULL);
@@ -279,9 +277,8 @@ static bool init_connect(struct ffmpeg_encoded_output *stream)
 		return false;
 
 	os_atomic_set_bool(&stream->disconnected, false);
+	os_atomic_set_bool(&stream->encode_error, false);
 	stream->total_bytes_sent = 0;
-	stream->dropped_frames = 0;
-	stream->min_priority = 0;
 	stream->got_first_video = false;
 
 	settings = obs_output_get_settings(stream->output);
@@ -291,16 +288,8 @@ static bool init_connect(struct ffmpeg_encoded_output *stream)
 	dstr_copy(&stream->password, obs_service_get_password(service));
 	dstr_depad(&stream->path);
 	dstr_depad(&stream->key);
-	drop_b = (int64_t)obs_data_get_int(settings, OPT_DROP_THRESHOLD);
-	drop_p = (int64_t)obs_data_get_int(settings, OPT_PFRAME_DROP_THRESHOLD);
 	stream->max_shutdown_time_sec =
 		(int)obs_data_get_int(settings, OPT_MAX_SHUTDOWN_TIME_SEC);
-
-	if (drop_p < (drop_b + 200))
-		drop_p = drop_b + 200;
-
-	stream->drop_threshold_usec = 1000 * drop_b;
-	stream->pframe_drop_threshold_usec = 1000 * drop_p;
 
 	obs_data_release(settings);
 
@@ -341,51 +330,6 @@ static inline size_t num_buffered_packets(struct ffmpeg_encoded_output *stream)
 	return stream->packets.size / sizeof(struct encoder_packet);
 }
 
-static void drop_frames(struct ffmpeg_encoded_output *stream, const char *name,
-			int highest_priority, bool pframes)
-{
-	UNUSED_PARAMETER(pframes);
-	struct circlebuf new_buf = {0};
-	int num_frames_dropped = 0;
-
-#ifdef _DEBUG
-	int start_packets = (int)num_buffered_packets(stream);
-#else
-	UNUSED_PARAMETER(name);
-#endif
-
-	circlebuf_reserve(&new_buf, sizeof(struct encoder_packet) * 8);
-
-	while (stream->packets.size) {
-		struct encoder_packet packet;
-		circlebuf_pop_front(&stream->packets, &packet, sizeof(packet));
-
-		/* do not drop audio data or video keyframes */
-		if (packet.type == OBS_ENCODER_AUDIO ||
-		    packet.drop_priority >= highest_priority) {
-			circlebuf_push_back(&new_buf, &packet, sizeof(packet));
-
-		} else {
-			num_frames_dropped++;
-			obs_encoder_packet_release(&packet);
-		}
-	}
-
-	circlebuf_free(&stream->packets);
-	stream->packets = new_buf;
-
-	if (stream->min_priority < highest_priority)
-		stream->min_priority = highest_priority;
-	if (!num_frames_dropped)
-		return;
-
-	stream->dropped_frames += num_frames_dropped;
-#ifdef _DEBUG
-	debug("Dropped %s, prev packet count: %d, new packet count: %d", name,
-	      start_packets, (int)num_buffered_packets(stream));
-#endif
-}
-
 static bool find_first_video_packet(struct ffmpeg_encoded_output *stream,
 				    struct encoder_packet *first)
 {
@@ -401,42 +345,6 @@ static bool find_first_video_packet(struct ffmpeg_encoded_output *stream,
 	}
 
 	return false;
-}
-
-static void check_to_drop_frames(struct ffmpeg_encoded_output *stream,
-				 bool pframes)
-{
-	struct encoder_packet first;
-	int64_t buffer_duration_usec;
-	size_t num_packets = num_buffered_packets(stream);
-	const char *name = pframes ? "p-frames" : "b-frames";
-	int priority = pframes ? OBS_NAL_PRIORITY_HIGHEST
-			       : OBS_NAL_PRIORITY_HIGH;
-	int64_t drop_threshold = pframes ? stream->pframe_drop_threshold_usec
-					 : stream->drop_threshold_usec;
-
-	if (num_packets < 5) {
-		if (!pframes)
-			stream->congestion = 0.0f;
-		return;
-	}
-
-	if (!find_first_video_packet(stream, &first))
-		return;
-
-	/* if the amount of time stored in the buffered packets waiting to be
-	 * sent is higher than threshold, drop frames */
-	buffer_duration_usec = stream->last_dts_usec - first.dts_usec;
-
-	if (!pframes) {
-		stream->congestion =
-			(float)buffer_duration_usec / (float)drop_threshold;
-	}
-
-	if (buffer_duration_usec > drop_threshold) {
-		debug("buffer_duration_usec: %" PRId64, buffer_duration_usec);
-		drop_frames(stream, name, priority, pframes);
-	}
 }
 
 static int init_send(struct ffmpeg_encoded_output *stream)
@@ -490,18 +398,6 @@ static int proto_init(struct ffmpeg_encoded_output *stream)
 	return ret;
 }
 
-static int get_audio_mix_count(int audio_mix_mask)
-{
-	int mix_count = 0;
-
-	for (int i = 0; i < MAX_AUDIO_MIXES; i++) {
-		if ((audio_mix_mask & (1 << i)) != 0)
-			mix_count++;
-	}
-
-	return mix_count;
-}
-
 static inline int encoder_bitrate(obs_encoder_t *encoder)
 {
 	obs_data_t *settings = obs_encoder_get_settings(encoder);
@@ -510,6 +406,25 @@ static inline int encoder_bitrate(obs_encoder_t *encoder)
 	obs_data_release(settings);
 
 	return bitrate;
+}
+
+static void get_video_extradata(struct ffmpeg_encoded_output *stream, struct ffmpeg_cfg *config)
+{
+	uint8_t *header;
+	size_t size;
+	obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
+	obs_encoder_get_extra_data(vencoder, &config->video_extradata, &size);
+	config->video_extradata_size = (int)size;
+	//obs_encoder_get_extra_data(vencoder, &header, &size);
+	//config->video_extradata_size = (int)obs_parse_avc_header(&config->video_extradata, header, size);
+}
+
+static void get_audio_extradata(struct ffmpeg_encoded_output *stream, struct ffmpeg_cfg *config)
+{
+	size_t size;
+	obs_encoder_t *aencoder = obs_output_get_audio_encoder(stream->output, 0);
+	obs_encoder_get_extra_data(aencoder, &config->audio_extradata, &size);
+	config->audio_extradata_size = (int)size;
 }
 
 static int proto_try_connect(struct ffmpeg_encoded_output *stream)
@@ -544,6 +459,7 @@ static int proto_try_connect(struct ffmpeg_encoded_output *stream)
 	config.height = obs_encoder_get_height(vencoder);
 	config.audio_tracks = (int)obs_output_get_mixer(stream->output);
 	config.audio_mix_count = 1;
+	config.is_encoded_output = true;
 	config.format =
 		obs_to_ffmpeg_video_format(video_output_get_format(video));
 
@@ -568,6 +484,9 @@ static int proto_try_connect(struct ffmpeg_encoded_output *stream)
 		config.scale_width = config.width;
 	if (!config.scale_height)
 		config.scale_height = config.height;
+
+	get_video_extradata(stream, &config);
+	get_audio_extradata(stream, &config);
 
 	success = ffmpeg_data_init(&stream->ff_data, &config);
 	if (!success)
@@ -611,11 +530,14 @@ static int proto_send_packet(struct ffmpeg_encoded_output *stream,
 	av_packet.data = obs_packet->data;
 	av_packet.size = (int)obs_packet->size;
 	av_packet.stream_index = streamIdx;
-	av_packet.pts = _rescale_ts(stream, obs_packet->pts, streamIdx);
-	av_packet.dts = _rescale_ts(stream, obs_packet->dts, streamIdx);
+	av_packet.pts =  _rescale_ts(stream, obs_packet->pts, streamIdx);
+	av_packet.dts =  _rescale_ts(stream, obs_packet->dts, streamIdx);
 
-	if (obs_packet->keyframe)
-		av_packet.flags = AV_PKT_FLAG_KEY;
+	if (obs_packet->keyframe) {
+		av_packet.flags |= AV_PKT_FLAG_KEY;
+		//if (!is_header)
+		//	send_video_header(stream);
+	}	
 
 	ret = av_interleaved_write_frame(stream->ff_data.output, &av_packet);
 	stream->total_bytes_sent += obs_packet->size;
@@ -663,17 +585,10 @@ static void ffmpeg_encoded_output_destroy(void *data)
 	os_sem_destroy(stream->send_sem);
 	pthread_mutex_destroy(&stream->packets_mutex);
 	circlebuf_free(&stream->packets);
-#ifdef TEST_FRAMEDROPS
-	circlebuf_free(&stream->droptest_info);
-#endif
 
-	os_event_destroy(stream->buffer_space_available_event);
-	os_event_destroy(stream->buffer_has_data_event);
 	os_event_destroy(stream->send_thread_signaled_exit);
-	pthread_mutex_destroy(&stream->write_buf_mutex);
 	ffmpeg_data_free(&stream->ff_data);
-	if (stream->write_buf)
-		bfree(stream->write_buf);
+
 	bfree(stream);
 }
 
@@ -693,21 +608,6 @@ static void *ffmpeg_encoded_output_create(obs_data_t *settings,
 	if (os_event_init(&stream->stop_event, OS_EVENT_TYPE_MANUAL) != 0)
 		goto fail;
 
-	if (pthread_mutex_init(&stream->write_buf_mutex, NULL) != 0) {
-		warn("Failed to initialize write buffer mutex");
-		goto fail;
-	}
-
-	if (os_event_init(&stream->buffer_space_available_event,
-			  OS_EVENT_TYPE_AUTO) != 0) {
-		warn("Failed to initialize write buffer event");
-		goto fail;
-	}
-	if (os_event_init(&stream->buffer_has_data_event, OS_EVENT_TYPE_AUTO) !=
-	    0) {
-		warn("Failed to initialize data buffer event");
-		goto fail;
-	}
 	if (os_event_init(&stream->send_thread_signaled_exit,
 			  OS_EVENT_TYPE_MANUAL) != 0) {
 		warn("Failed to initialize socket exit event");
@@ -745,6 +645,30 @@ static int32_t get_ms_time(struct encoder_packet *packet, int64_t val)
 	return (int32_t)(val * MILLISECOND_DEN / packet->timebase_den);
 }
 
+
+static int deactivate(struct ffmpeg_encoded_output *stream, int code)
+{
+	int ret = -1;
+
+	if (active(stream)) {
+
+		os_atomic_set_bool(&stream->active, false);
+		os_atomic_set_bool(&stream->sent_headers, false);
+
+		info("Output to URL '%s' stopped", stream->path.array);
+	}
+
+	if (code) {
+		obs_output_signal_stop(stream->output, code);
+	}
+	else if (stopping(stream)) {
+		obs_output_end_data_capture(stream->output);
+	}
+
+	os_atomic_set_bool(stream->stopping, false);
+	return ret;
+}
+
 static void ffmpeg_encoded_output_data(void *data,
 				       struct encoder_packet *packet)
 {
@@ -755,14 +679,25 @@ static void ffmpeg_encoded_output_data(void *data,
 	if (disconnected(stream) || !active(stream))
 		return;
 
+	/* encoder failure */
+	if (!packet) {
+		os_atomic_set_bool(&stream->encode_error, true);
+		os_sem_post(stream->send_sem);
+		return;
+	}
+
 	if (packet->type == OBS_ENCODER_VIDEO) {
 		if (!stream->got_first_video) {
 			stream->start_dts_offset =
 				get_ms_time(packet, packet->dts);
 			stream->got_first_video = true;
 		}
+
+		obs_parse_avc_packet(&new_packet, packet);
 	}
-	obs_encoder_packet_ref(&new_packet, packet);
+	else {
+		obs_encoder_packet_ref(&new_packet, packet);
+	}
 
 	pthread_mutex_lock(&stream->packets_mutex);
 
@@ -807,8 +742,6 @@ static void ffmpeg_encoded_output_stop(void *data, uint64_t ts)
 
 static void ffmpeg_encoded_output_defaults(obs_data_t *defaults)
 {
-	obs_data_set_default_int(defaults, OPT_DROP_THRESHOLD, 700);
-	obs_data_set_default_int(defaults, OPT_PFRAME_DROP_THRESHOLD, 900);
 	obs_data_set_default_int(defaults, OPT_MAX_SHUTDOWN_TIME_SEC, 30);
 }
 
@@ -830,20 +763,6 @@ static uint64_t ffmpeg_encoded_output_total_bytes_sent(void *data)
 	struct ffmpeg_encoded_output *stream = data;
 
 	return stream->total_bytes_sent;
-}
-
-static int ffmpeg_encoded_output_dropped_frames(void *data)
-{
-	struct ffmpeg_encoded_output *stream = data;
-
-	return stream->dropped_frames;
-}
-
-static float ffmpeg_encoded_output_congestion(void *data)
-{
-	struct ffmpeg_encoded_output *stream = data;
-
-	return stream->min_priority > 0 ? 1.0f : stream->congestion;
 }
 
 static int ffmpeg_encoded_output_connect_time(void *data)
@@ -868,6 +787,5 @@ struct obs_output_info ffmpeg_encoded_output_info = {
 	.get_defaults = ffmpeg_encoded_output_defaults,
 	.get_properties = ffmpeg_encoded_output_properties,
 	.get_total_bytes = ffmpeg_encoded_output_total_bytes_sent,
-	.get_congestion = ffmpeg_encoded_output_congestion,
 	.get_connect_time_ms = ffmpeg_encoded_output_connect_time,
-	.get_dropped_frames = ffmpeg_encoded_output_dropped_frames};
+};
