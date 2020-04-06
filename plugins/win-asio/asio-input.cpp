@@ -260,7 +260,7 @@ public:
 					obs_module_text(("Route." + std::to_string(i)).c_str()), OBS_COMBO_TYPE_LIST,
 					OBS_COMBO_FORMAT_INT);
 			obs_property_set_long_description(
-					route[i], obs_module_text(("Route.Desc." + std::to_string(i)).c_str()));
+					route[i], obs_module_text(("Assign an ASIO Channel to OBS output Channel " + std::to_string(i + 1)).c_str()));
 		}
 
 		panel = obs_properties_add_button2(props, "ctrl", obs_module_text("Control Panel"), show_panel, vptr);
