@@ -48,7 +48,6 @@ StringArray           paths;
 static FileSearchPath search_2x = vst2format.getDefaultLocationsToSearch();
 StringArray           paths_2x;
 
-
 StringArray get_paths(VSTPluginFormat &f)
 {
 	UNUSED_PARAMETER(f);
@@ -109,18 +108,18 @@ bool obs_module_load(void)
 	vst_filter.save                   = PluginHost<VSTPluginFormat>::Save;
 	vst_filter.type_data              = (void *)true;
 	vst_filter.free_type_data         = free_type_data;
-	
+
 	int version = (JUCE_MAJOR_VERSION << 16) | (JUCE_MINOR_VERSION << 8) | JUCE_BUILDNUMBER;
 	blog(LOG_INFO, "JUCE Version: (%i) %i.%i.%i", version, JUCE_MAJOR_VERSION, JUCE_MINOR_VERSION,
 			JUCE_BUILDNUMBER);
 
-	char *iconPath = obs_module_file("obs-studio.ico");
+	char *       iconPath = obs_module_file("obs-studio.ico");
 	juce::String iconStr  = iconPath;
 	juce::File   iconFile = juce::File(iconStr);
 	if (iconStr.length() > 0)
 		windowIcon = ImageFileFormat::loadFrom(iconFile);
 	bfree(iconPath);
-	
+
 	blog(LOG_INFO, "%i", sizeof(vst3_filter));
 
 	obs_register_source(&vst3_filter);

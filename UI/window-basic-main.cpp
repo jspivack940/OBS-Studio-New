@@ -749,14 +749,13 @@ void OBSBasic::CreateFirstRunSources()
 
 	if (hasDesktopAudio)
 		ResetAudioDevice(App()->OutputAudioSource(), "default",
-				Str("Basic.DesktopDevice1"), 1);
+				 Str("Basic.DesktopDevice1"), 1);
 	if (HasAudioDevices(App()->InputAudioSource()))
 		ResetAudioDevice(App()->InputAudioSource(), "default",
-				Str("Basic.AuxDevice1"), 3);
+				 Str("Basic.AuxDevice1"), 3);
 	if (HasAudioDevices("asio_input_capture"))
 		ResetAudioDevice("asio_input_capture", "default",
-			Str("Basic.AuxDevice1"), 3);
-
+				 Str("Basic.AuxDevice1"), 3);
 }
 
 void OBSBasic::CreateDefaultScene(bool firstStart)
@@ -3582,31 +3581,31 @@ void trigger_sparkle_update();
 
 void OBSBasic::TimedCheckForUpdates()
 {
-//	if (!config_get_bool(App()->GlobalConfig(), "General",
-//			     "EnableAutoUpdates"))
-//		return;
-//
-//#ifdef UPDATE_SPARKLE
-//	init_sparkle_updater(config_get_bool(App()->GlobalConfig(), "General",
-//					     "UpdateToUndeployed"));
-//#elif _WIN32
-//	long long lastUpdate = config_get_int(App()->GlobalConfig(), "General",
-//					      "LastUpdateCheck");
-//	uint32_t lastVersion =
-//		config_get_int(App()->GlobalConfig(), "General", "LastVersion");
-//
-//	if (lastVersion < LIBOBS_API_VER) {
-//		lastUpdate = 0;
-//		config_set_int(App()->GlobalConfig(), "General",
-//			       "LastUpdateCheck", 0);
-//	}
-//
-//	long long t = (long long)time(nullptr);
-//	long long secs = t - lastUpdate;
-//
-//	if (secs > UPDATE_CHECK_INTERVAL)
-//		CheckForUpdates(false);
-//#endif
+	//	if (!config_get_bool(App()->GlobalConfig(), "General",
+	//			     "EnableAutoUpdates"))
+	//		return;
+	//
+	//#ifdef UPDATE_SPARKLE
+	//	init_sparkle_updater(config_get_bool(App()->GlobalConfig(), "General",
+	//					     "UpdateToUndeployed"));
+	//#elif _WIN32
+	//	long long lastUpdate = config_get_int(App()->GlobalConfig(), "General",
+	//					      "LastUpdateCheck");
+	//	uint32_t lastVersion =
+	//		config_get_int(App()->GlobalConfig(), "General", "LastVersion");
+	//
+	//	if (lastVersion < LIBOBS_API_VER) {
+	//		lastUpdate = 0;
+	//		config_set_int(App()->GlobalConfig(), "General",
+	//			       "LastUpdateCheck", 0);
+	//	}
+	//
+	//	long long t = (long long)time(nullptr);
+	//	long long secs = t - lastUpdate;
+	//
+	//	if (secs > UPDATE_CHECK_INTERVAL)
+	//		CheckForUpdates(false);
+	//#endif
 }
 
 void OBSBasic::CheckForUpdates(bool manualUpdate)
@@ -3628,7 +3627,7 @@ void OBSBasic::CheckForUpdates(bool manualUpdate)
 
 void OBSBasic::updateCheckFinished()
 {
-//	ui->actionCheckForUpdates->setEnabled(true);
+	//	ui->actionCheckForUpdates->setEnabled(true);
 }
 
 void OBSBasic::DuplicateSelectedScene()
@@ -5538,7 +5537,7 @@ void OBSBasic::on_actionUploadLastCrashLog_triggered()
 
 void OBSBasic::on_actionCheckForUpdates_triggered()
 {
-//	CheckForUpdates(true);
+	//	CheckForUpdates(true);
 }
 
 void OBSBasic::logUploadFinished(const QString &text, const QString &error)

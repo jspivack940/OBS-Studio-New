@@ -180,8 +180,9 @@ static void PopulateBitrateMap()
 				continue;
 			//disable coreaudio aac and fdk-aac for 7 channels or 9+
 			if ((output_channels >= 9 || output_channels == 7 ||
-				aoi.speakers == SPEAKERS_OCTAGONAL) && (encoder == "libfdk_aac"
-				|| encoder == "CoreAudio_AAC"))
+			     aoi.speakers == SPEAKERS_OCTAGONAL) &&
+			    (encoder == "libfdk_aac" ||
+			     encoder == "CoreAudio_AAC"))
 				continue;
 
 			HandleEncoderProperties(encoder.c_str());

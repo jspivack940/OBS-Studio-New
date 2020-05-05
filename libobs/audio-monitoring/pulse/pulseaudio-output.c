@@ -51,21 +51,33 @@ pulseaudio_channels_to_obs_speakers(uint_fast32_t channels)
 		return SPEAKERS_7POINT1;
 	default:
 		return SPEAKERS_UNKNOWN;
-=======
-		case 1:  return SPEAKERS_MONO;
-		case 2:  return SPEAKERS_STEREO;
-		case 3:  return SPEAKERS_2POINT1;
-		case 4:  return SPEAKERS_4POINT0;
-		case 5:  return SPEAKERS_5POINT0;
-		case 6:  return SPEAKERS_5POINT1;
-		case 7:  return SPEAKERS_6POINT1;
-		case 8:  return SPEAKERS_7POINT1;
-		case 9:  return SPEAKERS_9POINT0;
-		case 10: return SPEAKERS_10POINT0;
-		case 11: return SPEAKERS_11POINT0;
-		case 12: return SPEAKERS_12POINT0;
-		case 16: return SPEAKERS_HEXADECAGONAL;
-		default: return SPEAKERS_UNKNOWN;
+		== == == = case 1 : return SPEAKERS_MONO;
+	case 2:
+		return SPEAKERS_STEREO;
+	case 3:
+		return SPEAKERS_2POINT1;
+	case 4:
+		return SPEAKERS_4POINT0;
+	case 5:
+		return SPEAKERS_5POINT0;
+	case 6:
+		return SPEAKERS_5POINT1;
+	case 7:
+		return SPEAKERS_6POINT1;
+	case 8:
+		return SPEAKERS_7POINT1;
+	case 9:
+		return SPEAKERS_9POINT0;
+	case 10:
+		return SPEAKERS_10POINT0;
+	case 11:
+		return SPEAKERS_11POINT0;
+	case 12:
+		return SPEAKERS_12POINT0;
+	case 16:
+		return SPEAKERS_HEXADECAGONAL;
+	default:
+		return SPEAKERS_UNKNOWN;
 >>>>>>> 3c8148cc4... libobs/media-io: Expand surround sound capabilities
 	}
 }
@@ -220,7 +232,7 @@ static pa_channel_map pulseaudio_channel_map(enum speaker_layout layout)
 		ret.map[8] = PA_CHANNEL_POSITION_AUX0;
 		break;
 
-		case SPEAKERS_12POINT0:
+	case SPEAKERS_12POINT0:
 		ret.channels = 12;
 		ret.map[3] = PA_CHANNEL_POSITION_REAR_LEFT;
 		ret.map[4] = PA_CHANNEL_POSITION_REAR_RIGHT;
@@ -230,7 +242,7 @@ static pa_channel_map pulseaudio_channel_map(enum speaker_layout layout)
 		ret.map[8] = PA_CHANNEL_POSITION_AUX0;
 		break;
 
-		case SPEAKERS_HEXADECAGONAL:
+	case SPEAKERS_HEXADECAGONAL:
 		ret.channels = 16;
 		ret.map[3] = PA_CHANNEL_POSITION_REAR_LEFT;
 		ret.map[4] = PA_CHANNEL_POSITION_REAR_RIGHT;
