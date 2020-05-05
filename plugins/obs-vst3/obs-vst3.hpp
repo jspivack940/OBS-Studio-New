@@ -42,7 +42,7 @@ private:
 	double                               current_sample_rate = 0.0;
 	std::unique_ptr<AudioPluginInstance> vst_instance;
 	std::unique_ptr<AudioPluginInstance> new_vst_instance;
-	juce::CriticalSection menu_lock;
+	juce::CriticalSection                menu_lock;
 
 	PluginDescription desc;
 
@@ -359,7 +359,7 @@ private:
 
 	void filter_audio(struct obs_audio_data *audio)
 	{
-		//const ScopedTryLock lock(menu_lock);
+		// const ScopedTryLock lock(menu_lock);
 		if (menu_lock.tryEnter()) {
 			if (swap) {
 				vst_instance.swap(new_vst_instance);
