@@ -17,7 +17,7 @@ add_subdirectory(obs-frontend-api)
 
 project(obs)
 
-set(DISABLE_UPDATE_MODULE TRUE CACHE BOOL "Disables building the update module")
+set(DISABLE_UPDATE_MODULE FALSE CACHE BOOL "Disables building the update module")
 
 if(NOT DEFINED TWITCH_CLIENTID OR "${TWITCH_CLIENTID}" STREQUAL "" OR
    NOT DEFINED TWITCH_HASH     OR "${TWITCH_HASH}"     STREQUAL "" OR
