@@ -40,11 +40,9 @@ jobs:
           if [ -d "$(brew --cellar)/swig" ]; then
                brew unlink swig
           fi
-
           if [ -d "$(brew --cellar)/qt" ]; then
                brew unlink qt
           fi
-
           brew bundle --file ./CI/scripts/macos/Brewfile
       - name: 'Restore Chromium Embedded Framework from cache'
         id: cef-cache
@@ -54,6 +52,14 @@ jobs:
         with:
           path: ${{ github.workspace }}/cmbuild/cef_binary_${{ env.CEF_BUILD_VERSION }}_macosx64
           key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.CEF_BUILD_VERSION }}
+      - name: 'Restore pre-built dependencies from cache'
+        id: deps-cache
+        uses: actions/cache@v1
+        env:
+          CACHE_NAME: 'deps-cache'
+        with:
+          path: /tmp/obsdeps
+          key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.MACOS_DEPS_VERSION }}
       - name: 'Restore VLC dependency from cache'
         id: vlc-cache
         uses: actions/cache@v1
@@ -71,10 +77,11 @@ jobs:
           path: ${{ github.workspace }}/cmbuild/sparkle
           key: ${{ runner.os }}-pr-${{ env.CACHE_NAME }}-${{ env.SPARKLE_VERSION }}
       - name: 'Install prerequisite: Pre-built dependencies'
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          curl -L -O http://server.fbt-asso.org:25609/obs/obsdeps3.tar.gz
-          tar -xf ./obsdeps3.tar.gz -C "/tmp"
+          curl -L -O https://github.com/obsproject/obs-deps/releases/download/${{ env.MACOS_DEPS_VERSION }}/osx-deps-${{ env.MACOS_DEPS_VERSION }}.tar.gz
+          tar -xf ./osx-deps-${{ env.MACOS_DEPS_VERSION }}.tar.gz -C "/tmp"
       - name: 'Install prerequisite: VLC'
         if: steps.vlc-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -112,7 +119,7 @@ jobs:
         run: |
           mkdir ./build
           cd ./build
-          cmake -DOBS_VERSION_OVERRIDE="25.0.8" -DENABLE_SPARKLE_UPDATER=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.11 -DQTDIR="/usr/local/Cellar/qt/${{ env.QT_VERSION }}" -DDepsPath="/tmp/obsdeps" -DVLCPath="${{ github.workspace }}/cmbuild/vlc-${{ env.VLC_VERSION }}" -DBUILD_BROWSER=ON -DBROWSER_DEPLOY=ON -DBUILD_CAPTIONS=ON -DWITH_RTMPS=ON -DCEF_ROOT_DIR="${{ github.workspace }}/cmbuild/cef_binary_${{ env.CEF_BUILD_VERSION }}_macosx64" ..
+          cmake -DENABLE_SPARKLE_UPDATER=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=10.11 -DQTDIR="/usr/local/Cellar/qt/${{ env.QT_VERSION }}" -DDepsPath="/tmp/obsdeps" -DVLCPath="${{ github.workspace }}/cmbuild/vlc-${{ env.VLC_VERSION }}" -DENABLE_VLC=ON -DBUILD_BROWSER=ON -DBROWSER_DEPLOY=ON -DBUILD_CAPTIONS=ON -DWITH_RTMPS=ON -DCEF_ROOT_DIR="${{ github.workspace }}/cmbuild/cef_binary_${{ env.CEF_BUILD_VERSION }}_macosx64" ..
       - name: 'Build'
         shell: bash
         working-directory: ${{ github.workspace }}/build
@@ -137,24 +144,20 @@ jobs:
           mkdir -p OBS.app/Contents/MacOS
           mkdir OBS.app/Contents/PlugIns
           mkdir OBS.app/Contents/Resources
-
           cp -R rundir/RelWithDebInfo/bin/ ./OBS.app/Contents/MacOS
           cp -R rundir/RelWithDebInfo/data ./OBS.app/Contents/Resources
           cp ../CI/scripts/macos/app/obs.icns ./OBS.app/Contents/Resources
           cp -R rundir/RelWithDebInfo/obs-plugins/ ./OBS.app/Contents/PlugIns
           cp ../CI/scripts/macos/app/Info.plist ./OBS.app/Contents
-
           if [ -d ./OBS.app/Contents/Resources/data/obs-scripting ]; then
             mv ./OBS.app/Contents/Resources/data/obs-scripting/obslua.so ./OBS.app/Contents/MacOS/
             mv ./OBS.app/Contents/Resources/data/obs-scripting/_obspython.so ./OBS.app/Contents/MacOS/
             mv ./OBS.app/Contents/Resources/data/obs-scripting/obspython.py ./OBS.app/Contents/MacOS/
             rm -rf ./OBS.app/Contents/Resources/data/obs-scripting/
           fi
-
           install_name_tool -change libmbedtls.12.dylib @executable_path/../Frameworks/libmbedtls.12.dylib ./OBS.app/Contents/Plugins/obs-outputs.so
           install_name_tool -change libmbedcrypto.3.dylib @executable_path/../Frameworks/libmbedcrypto.3.dylib ./OBS.app/Contents/Plugins/obs-outputs.so
           install_name_tool -change libmbedx509.0.dylib @executable_path/../Frameworks/libmbedx509.0.dylib ./OBS.app/Contents/Plugins/obs-outputs.so
-
           ../CI/scripts/macos/app/dylibBundler -cd -of -a ./OBS.app -q -f \
             -s ./OBS.app/Contents/MacOS \
             -s "${{ github.workspace }}/cmbuild/sparkle/Sparkle.framework" \
@@ -182,17 +185,13 @@ jobs:
             -x ./OBS.app/Contents/PlugIns/text-freetype2.so \
             -x ./OBS.app/Contents/PlugIns/obs-libfdk.so \
             -x ./OBS.app/Contents/PlugIns/obs-outputs.so
-
           mv ./OBS.app/Contents/MacOS/libobs-opengl.so ./OBS.app/Contents/Frameworks
-
           sudo cp -R "${{ github.workspace }}/cmbuild/cef_binary_${{ env.CEF_BUILD_VERSION }}_macosx64/Release/Chromium Embedded Framework.framework" ./OBS.app/Contents/Frameworks/
           sudo chown -R $(whoami) ./OBS.app/Contents/Frameworks/
           install_name_tool -change /usr/local/Cellar/qt/${{ env.QT_VERSION }}/QtGui.framework/Versions/5/QtGui @executable_path/../Frameworks/QtGui.framework/Versions/5/QtGui ./OBS.app/Contents/Plugins/obs-browser.so
           install_name_tool -change /usr/local/Cellar/qt/${{ env.QT_VERSION }}/lib/QtCore.framework/Versions/5/QtCore @executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore ./OBS.app/Contents/Plugins/obs-browser.so
           install_name_tool -change /usr/local/Cellar/qt/${{ env.QT_VERSION }}/lib/QtWidgets.framework/Versions/5/QtWidgets @executable_path/../Frameworks/QtWidgets.framework/Versions/5/QtWidgets ./OBS.app/Contents/Plugins/obs-browser.so
-
           cp ../CI/scripts/macos/app/OBSPublicDSAKey.pem ./OBS.app/Contents/Resources
-
           plutil -insert CFBundleVersion -string ${{ env.OBS_GIT_TAG }}-${{ env.OBS_GIT_HASH }} ./OBS.app/Contents/Info.plist
           plutil -insert CFBundleShortVersionString -string ${{ env.OBS_GIT_TAG }}-${{ env.OBS_GIT_HASH }} ./OBS.app/Contents/Info.plist
           plutil -insert OBSFeedsURL -string https://obsproject.com/osx_update/feeds.xml ./OBS.app/Contents/Info.plist
@@ -206,16 +205,13 @@ jobs:
           FILE_DATE=$(date +%Y-%m-%d)
           FILE_NAME=$FILE_DATE-${{ env.OBS_GIT_HASH }}-${{ env.OBS_GIT_TAG }}-macOS.dmg
           echo "::set-env name=FILE_NAME::${FILE_NAME}"
-
           cp ../CI/scripts/macos/package/settings.json.template ./settings.json
           sed -i '' 's#\$\$VERSION\$\$#${{ env.OBS_GIT_TAG }}#g' ./settings.json
           sed -i '' 's#\$\$CI_PATH\$\$#../CI/scripts/macos#g' ./settings.json
           sed -i '' 's#\$\$BUNDLE_PATH\$\$#${{ github.workspace }}/build#g' ./settings.json
-
-          dmgbuild "OBS-Studio Music Edition ${{ env.OBS_GIT_TAG }}" "${FILE_NAME}" -s ./settings.json
+          dmgbuild "OBS-Studio ${{ env.OBS_GIT_TAG }}" "${FILE_NAME}" -s ./settings.json
           mkdir ../nightly
           sudo mv ./${FILE_NAME} ../nightly/${FILE_NAME}
-
       - name: 'Publish'
         if: success() && (github.event_name != 'pull_request' || contains( github.event.pull_request.labels.*.name, 'Seeking Testers'))
         uses: actions/upload-artifact@v2-preview
