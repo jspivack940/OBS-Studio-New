@@ -250,6 +250,7 @@ private:
 				   const float peak[MAX_AUDIO_CHANNELS],
 				   const float inputPeak[MAX_AUDIO_CHANNELS]);
 	static void OBSVolumeMuted(void *data, calldata_t *calldata);
+	static void OBSMonitoringEnabled(void *data, calldata_t *calldata);
 	static void OBSSourceMixersChanged(void *param, calldata_t *calldata);
 	static void OBSSourceMonitoringChanged(void *param,
 					       calldata_t *calldata);
@@ -260,6 +261,7 @@ private:
 
 private slots:
 	void VolumeMuted(bool muted);
+	void MonitoringEnabled(bool checked);
 	void SetMuted(bool checked);
 	void SetStream(bool checked);
 	void SetRec(bool checked);
