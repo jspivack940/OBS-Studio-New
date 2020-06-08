@@ -1,16 +1,14 @@
 /*
-Copyright (C) 2018 by pkv <pkv.stream@gmail.com>, andersama <anderson.john.alexander@gmail.com>
-
+Copyright (C) 2019 by andersama <anderson.john.alexander@gmail.com>
+and pkv <pkv.stream@gmail.com>.
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 2 of the License, or
 (at your option) any later version.
-
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
-
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -23,36 +21,35 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <util/bmem.h>
-#include <util/dstr.h>
 #include <util/platform.h>
-#include <util/threading.h>
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <vector>
-#include <stdio.h>
-#include <windows.h>
-#include "circle-buffer.h"
 #include <JuceHeader.h>
+#include <QWidget>
+#include <QMainWindow>
+#include <QWindow>
+#include <QMessageBox>
+#include <QString>
+#include <QLabel>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
 
 #define blog(level, msg, ...) blog(level, "asio-input: " msg, ##__VA_ARGS__)
 
-static void                         fill_out_devices(obs_property_t *prop);
-static std::vector<asio_listener *> listener_list;
+static void fill_out_devices(obs_property_t *prop);
 
 static juce::AudioIODeviceType *deviceTypeAsio = AudioIODeviceType::createAudioIODeviceType_ASIO();
 
 class ASIOPlugin;
 class AudioCB;
 
-static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
+static bool asio_device_changed(void *vptr, obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
 static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
 static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *list, obs_data_t *settings);
 
-static std::vector<AudioCB *>       callbacks;
-static std::vector<device_buffer *> buffers;
+static std::vector<AudioCB *> callbacks;
 
 enum audio_format string_to_obs_audio_format(std::string format)
 {
@@ -103,6 +100,21 @@ int get_obs_output_channels()
 	return (int)get_audio_channels(aoi.speakers);
 }
 
+int get_max_obs_channels()
+{
+	static int channels = 0;
+	if (channels > 0) {
+		return channels;
+	} else {
+		for (int i = 0; i < 1024; i++) {
+			int c = get_audio_channels((speaker_layout)i);
+			if (c > channels)
+				channels = c;
+		}
+		return channels;
+	}
+}
+
 static std::vector<speaker_layout> known_layouts = {
 		SPEAKERS_MONO,    /**< Channels: MONO */
 		SPEAKERS_STEREO,  /**< Channels: FL, FR */
@@ -117,11 +129,159 @@ static std::vector<std::string> known_layouts_str = {"Mono", "Stereo", "2.1", "4
 
 class AudioCB : public juce::AudioIODeviceCallback {
 private:
-	device_buffer *_buffer = nullptr;
-	AudioIODevice *_device = nullptr;
-	char *         _name   = nullptr;
+	AudioIODevice *  _device      = nullptr;
+	char *           _name        = nullptr;
+	int              _write_index = 0;
+	double           sample_rate;
+	TimeSliceThread *_thread = nullptr;
 
 public:
+	struct AudioBufferInfo {
+		AudioBuffer<float> buffer;
+		obs_source_audio   out;
+	};
+
+	int write_index()
+	{
+		return _write_index;
+	}
+
+private:
+	std::vector<AudioBufferInfo> buffers;
+
+public:
+	class AudioListener : public TimeSliceClient {
+	private:
+		std::vector<short> _route;
+		obs_source_audio   in;
+		obs_source_t *     source;
+
+		bool     active;
+		int      read_index = 0;
+		int      wait_time  = 4;
+		AudioCB *callback;
+		AudioCB *current_callback;
+
+		size_t   silent_buffer_size = 0;
+		uint8_t *silent_buffer      = nullptr;
+
+		bool set_data(AudioBufferInfo *info, obs_source_audio &out, const std::vector<short> &route,
+				int *sample_rate)
+		{
+			out.speakers        = in.speakers;
+			out.samples_per_sec = info->out.samples_per_sec;
+			out.format          = AUDIO_FORMAT_FLOAT_PLANAR;
+			out.timestamp       = info->out.timestamp;
+			out.frames          = info->buffer.getNumSamples();
+
+			*sample_rate = out.samples_per_sec;
+			// cache a silent buffer
+			size_t buffer_size = (out.frames * sizeof(bytedepth_format(out.format)));
+			if (silent_buffer_size < buffer_size) {
+				if (silent_buffer)
+					bfree(silent_buffer);
+				silent_buffer      = (uint8_t *)bzalloc(buffer_size);
+				silent_buffer_size = buffer_size;
+			}
+
+			int       ichs = info->buffer.getNumChannels();
+			int       ochs = get_audio_channels(out.speakers);
+			uint8_t **data = (uint8_t **)info->buffer.getArrayOfWritePointers();
+
+			bool muted = true;
+			for (int i = 0; i < ochs; i++) {
+				if (route[i] >= 0 && route[i] < ichs) {
+					out.data[i] = data[route[i]];
+					muted       = false;
+				} else {
+					out.data[i] = silent_buffer;
+				}
+			}
+			return !muted;
+		}
+
+	public:
+		AudioListener(obs_source_t *source, AudioCB *cb) : source(source), callback(cb)
+		{
+			active = true;
+		}
+
+		~AudioListener()
+		{
+			if (silent_buffer)
+				bfree(silent_buffer);
+			disconnect();
+		}
+
+		void disconnect()
+		{
+			active = false;
+		}
+
+		void reconnect()
+		{
+			active = true;
+		}
+
+		void setOutput(obs_source_audio o)
+		{
+			in.format          = o.format;
+			in.samples_per_sec = o.samples_per_sec;
+			in.speakers        = o.speakers;
+		}
+
+		void setCurrentCallback(AudioCB *cb)
+		{
+			current_callback = cb;
+		}
+
+		void setCallback(AudioCB *cb)
+		{
+			callback = cb;
+		}
+
+		void setReadIndex(int idx)
+		{
+			read_index = idx;
+		}
+
+		void setRoute(std::vector<short> route)
+		{
+			_route = route;
+		}
+
+		AudioCB *getCallback()
+		{
+			return callback;
+		}
+
+		int useTimeSlice()
+		{
+			if (!active || callback != current_callback)
+				return -1;
+			int write_index = callback->write_index();
+			if (read_index == write_index)
+				return wait_time;
+
+			std::vector<short> route           = _route;
+			int                sample_rate     = 0;
+			int                max_sample_rate = 1;
+			int                m               = (int)callback->buffers.size();
+
+			while (read_index != write_index) {
+				obs_source_audio out;
+				bool unmuted = set_data(&callback->buffers[read_index], out, route, &sample_rate);
+				if (unmuted && out.speakers)
+					obs_source_output_audio(source, &out);
+				if (sample_rate > max_sample_rate)
+					max_sample_rate = sample_rate;
+				read_index = (read_index + 1) % m;
+			}
+			wait_time = ((1000 / 2) * AUDIO_OUTPUT_FRAMES) / max_sample_rate;
+			return wait_time;
+		}
+	};
+
 	AudioIODevice *getDevice()
 	{
 		return _device;
@@ -132,11 +292,6 @@ public:
 		return _name;
 	}
 
-	device_buffer *getBuffer()
-	{
-		return _buffer;
-	}
-
 	void setDevice(AudioIODevice *device, const char *name)
 	{
 		_device = device;
@@ -145,9 +300,8 @@ public:
 		_name = bstrdup(name);
 	}
 
-	AudioCB(device_buffer *buffer, AudioIODevice *device, const char *name)
+	AudioCB(AudioIODevice *device, const char *name)
 	{
-		_buffer = buffer;
 		_device = device;
 		_name   = bstrdup(name);
 	}
@@ -161,22 +315,72 @@ public:
 			int numOutputChannels, int numSamples)
 	{
 		uint64_t ts = os_gettime_ns();
-		_buffer->write_buffer_planar(inputChannelData, numInputChannels, numSamples, ts);
+
+		for (int i = 0; i < numInputChannels; i++)
+			buffers[_write_index].buffer.copyFrom(i, 0, inputChannelData[i], numSamples);
+		buffers[_write_index].out.timestamp       = ts;
+		buffers[_write_index].out.frames          = numSamples;
+		buffers[_write_index].out.samples_per_sec = (uint32_t)sample_rate;
+		_write_index                              = (_write_index + 1) % buffers.size();
+
 		UNUSED_PARAMETER(numOutputChannels);
 		UNUSED_PARAMETER(outputChannelData);
+	}
+
+	void add_client(AudioListener *client)
+	{
+		if (!_thread)
+			_thread = new TimeSliceThread("");
+
+		client->setCurrentCallback(this);
+		client->setReadIndex(_write_index);
+		_thread->addTimeSliceClient(client);
+	}
+
+	void remove_client(AudioListener *client)
+	{
+		if (_thread)
+			_thread->removeTimeSliceClient(client);
 	}
 
 	void audioDeviceAboutToStart(juce::AudioIODevice *device)
 	{
 		blog(LOG_INFO, "Starting (%s)", device->getName().toStdString().c_str());
-		device_buffer_options opts;
-		opts.buffer_size   = device->getCurrentBufferSizeSamples();
-		opts.channel_count = (uint32_t)device->getActiveInputChannels().countNumberOfSetBits();
-		opts.name          = device->getName().toStdString().c_str();
-		_buffer->set_audio_format(AUDIO_FORMAT_FLOAT_PLANAR);
-		_buffer->update_sample_rate((uint32_t)device->getCurrentSampleRate());
-		_buffer->prep_circle_buffer(opts.buffer_size);
-		_buffer->re_prep_buffers(opts);
+		juce::String name = device->getName();
+		sample_rate       = device->getCurrentSampleRate();
+		int buf_size      = device->getCurrentBufferSizeSamples();
+		int target_size   = AUDIO_OUTPUT_FRAMES * 2;
+		int count         = std::max(8, target_size / buf_size);
+		int ch_count      = device->getActiveInputChannels().countNumberOfSetBits();
+
+		if (buffers.size() < count)
+			buffers.reserve(count);
+		int i = 0;
+		for (; i < buffers.size(); i++) {
+			buffers[i].buffer              = AudioBuffer<float>(ch_count, buf_size);
+			buffers[i].out.format          = AUDIO_FORMAT_FLOAT_PLANAR;
+			buffers[i].out.samples_per_sec = sample_rate;
+		}
+		for (; i < count; i++) {
+			AudioBufferInfo inf;
+			inf.buffer              = AudioBuffer<float>(ch_count, buf_size);
+			inf.out.format          = AUDIO_FORMAT_FLOAT_PLANAR;
+			inf.out.samples_per_sec = sample_rate;
+			buffers.push_back(inf);
+		}
+
+		if (!_thread) {
+			_thread = new TimeSliceThread(name);
+			_thread->startThread();
+		} else {
+			for (int i = 0; i < _thread->getNumClients(); i++) {
+				AudioListener *l = static_cast<AudioListener *>(_thread->getClient(i));
+				l->setCurrentCallback(this);
+			}
+			_thread->setCurrentThreadName(name);
+			if (!_thread->isThreadRunning())
+				_thread->startThread();
+		}
 	}
 
 	void audioDeviceStopped()
@@ -184,8 +388,10 @@ public:
 		blog(LOG_INFO, "Stopped (%s)", _device->getName().toStdString().c_str());
 	}
 
-	void audioDeviceErrror(const juce::String &errorMessage)
+	void audioDeviceError(const juce::String &errorMessage)
 	{
+		if (_thread)
+			_thread->stopThread(200);
 		std::string error = errorMessage.toStdString();
 		blog(LOG_ERROR, "Device Error!\n%s", error.c_str());
 	}
@@ -195,10 +401,10 @@ static bool show_panel(obs_properties_t *props, obs_property_t *property, void *
 
 class ASIOPlugin {
 private:
-	AudioIODevice *       _device  = nullptr;
-	asio_listener *       listener = nullptr;
-	std::vector<uint16_t> _route;
-	speaker_layout        _speakers;
+	AudioIODevice *         _device   = nullptr;
+	AudioCB::AudioListener *_listener = nullptr;
+	std::vector<uint16_t>   _route;
+	speaker_layout          _speakers;
 
 public:
 	AudioIODevice *getDevice()
@@ -208,21 +414,24 @@ public:
 
 	ASIOPlugin::ASIOPlugin(obs_data_t *settings, obs_source_t *source)
 	{
-		listener           = new asio_listener();
-		listener->source   = source;
-		listener->first_ts = 0;
-		update(settings);
+		UNUSED_PARAMETER(settings);
+		_listener = new AudioCB::AudioListener(source, nullptr);
 	}
 
 	ASIOPlugin::~ASIOPlugin()
 	{
-		listener->disconnect();
-		delete listener;
+		AudioCB *cb = _listener->getCallback();
+		_listener->disconnect();
+		if (cb)
+			cb->remove_client(_listener);
+		delete _listener;
 	}
 
 	static void *Create(obs_data_t *settings, obs_source_t *source)
 	{
-		return new ASIOPlugin(settings, source);
+		ASIOPlugin *plugin = new ASIOPlugin(settings, source);
+		plugin->update(settings);
+		return plugin;
 	}
 
 	static void Destroy(void *vptr)
@@ -232,19 +441,40 @@ public:
 		plugin = nullptr;
 	}
 
+	// version of plugin
+	static bool credits(obs_properties_t *props, obs_property_t *property, void *data)
+	{
+		UNUSED_PARAMETER(props);
+		UNUSED_PARAMETER(property);
+		UNUSED_PARAMETER(data);
+		QMainWindow *main_window = (QMainWindow *)obs_frontend_get_main_window();
+		QMessageBox  mybox(main_window);
+		QString      text = "v.2.0.2\r\n © 2020, license GPL v3\r\n"
+			       "Based on Juce library\r\n\r\n"
+			       "Authors:\r\n"
+			       "Andersama (main author) & pkv\r\n";
+		mybox.setText(text);
+		mybox.setIconPixmap(QPixmap(":/res/images/asiologo.png"));
+		mybox.setWindowTitle(QString("Credits: obs-asio"));
+		mybox.exec();
+		return true;
+	}
+
 	static obs_properties_t *Properties(void *vptr)
 	{
 		UNUSED_PARAMETER(vptr);
-		obs_properties_t *props;
-		obs_property_t *  devices;
-		obs_property_t *  format;
-		obs_property_t *  panel;
-		obs_property_t *  route[MAX_AUDIO_CHANNELS];
+		obs_properties_t *            props;
+		obs_property_t *              devices;
+		obs_property_t *              format;
+		obs_property_t *              panel;
+		obs_property_t *              button;
+		int                           max_channels = get_max_obs_channels();
+		std::vector<obs_property_t *> route(max_channels, nullptr);
 
 		props   = obs_properties_create();
 		devices = obs_properties_add_list(props, "device_id", obs_module_text("Device"), OBS_COMBO_TYPE_LIST,
 				OBS_COMBO_FORMAT_STRING);
-		obs_property_set_modified_callback(devices, asio_device_changed);
+		obs_property_set_modified_callback2(devices, asio_device_changed, vptr);
 		fill_out_devices(devices);
 		obs_property_set_long_description(devices, obs_module_text("ASIO Devices"));
 
@@ -254,13 +484,12 @@ public:
 			obs_property_list_add_int(format, known_layouts_str[i].c_str(), known_layouts[i]);
 		obs_property_set_modified_callback(format, asio_layout_changed);
 
-		unsigned int recorded_channels = get_obs_output_channels();
-		for (size_t i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+		for (size_t i = 0; i < max_channels; i++) {
 			route[i] = obs_properties_add_list(props, ("route " + std::to_string(i)).c_str(),
 					obs_module_text(("Route." + std::to_string(i)).c_str()), OBS_COMBO_TYPE_LIST,
 					OBS_COMBO_FORMAT_INT);
 			obs_property_set_long_description(
-					route[i], obs_module_text(("Assign an ASIO Channel to OBS output Channel " + std::to_string(i + 1)).c_str()));
+					route[i], obs_module_text(("Route.Desc." + std::to_string(i)).c_str()));
 		}
 
 		panel = obs_properties_add_button2(props, "ctrl", obs_module_text("Control Panel"), show_panel, vptr);
@@ -270,7 +499,7 @@ public:
 			device = plugin->getDevice();
 
 		obs_property_set_visible(panel, device && device->hasControlPanel());
-
+		button = obs_properties_add_button(props, "credits", "CREDITS", credits);
 		return props;
 	}
 
@@ -279,9 +508,6 @@ public:
 		std::string    name     = obs_data_get_string(settings, "device_id");
 		speaker_layout layout   = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
 		AudioCB *      callback = nullptr;
-
-		AudioIODevice *previous_device = (AudioIODevice *)listener->device_index;
-		device_buffer *previous_buffer = listener->buffer;
 
 		AudioIODevice *selected_device = nullptr;
 		for (int i = 0; i < callbacks.size(); i++) {
@@ -292,7 +518,6 @@ public:
 				if (!device) {
 					String deviceName = name.c_str();
 					device            = deviceTypeAsio->createDevice(deviceName, deviceName);
-					cb->getBuffer()->device_index = (uint64_t)device;
 					cb->setDevice(device, name.c_str());
 				}
 				selected_device = device;
@@ -303,8 +528,13 @@ public:
 		}
 
 		if (selected_device == nullptr) {
-			listener->device_index = (uint64_t)0;
-			listener->disconnect();
+			AudioCB *cb = _listener->getCallback();
+
+			_listener->setCurrentCallback(callback);
+			_listener->disconnect();
+
+			if (cb)
+				cb->remove_client(_listener);
 			return;
 		}
 
@@ -322,38 +552,58 @@ public:
 					_device->getCurrentBufferSizeSamples());
 			if (!err.toStdString().empty()) {
 				blog(LOG_WARNING, "%s", err.toStdString().c_str());
-				listener->device_index = (uint64_t)_device;
-				listener->disconnect();
+				AudioCB *cb = _listener->getCallback();
+
+				_listener->setCurrentCallback(callback);
+				_listener->disconnect();
+
+				if (cb)
+					cb->remove_client(_listener);
 				return;
 			}
 		}
 
-		if (_device->isOpen() && !_device->isPlaying())
+		AudioCB *cb = _listener->getCallback();
+		_listener->setCurrentCallback(callback);
+
+		if (_device->isOpen() && !_device->isPlaying() && callback)
 			_device->start(callback);
 
 		if (callback) {
-			listener->device_index = (uint64_t)_device;
-			device_buffer *buffer  = callback->getBuffer();
-			if (previous_device != _device)
-				listener->disconnect();
+			if (cb != callback) {
+				_listener->disconnect();
+				if (cb)
+					cb->remove_client(_listener);
+			}
 
-			int recorded_channels = get_audio_channels(layout);
+			int                recorded_channels = get_audio_channels(layout);
+			int                max_channels      = get_max_obs_channels();
+			std::vector<short> r;
+			r.reserve(max_channels);
+
 			for (int i = 0; i < recorded_channels; i++) {
 				std::string route_str = "route " + std::to_string(i);
-				listener->route[i]    = (int)obs_data_get_int(settings, route_str.c_str());
+				r.push_back(obs_data_get_int(settings, route_str.c_str()));
 			}
-			for (int i = recorded_channels; i < MAX_AUDIO_CHANNELS; i++) {
-				listener->route[i] = -1;
+			for (int i = recorded_channels; i < max_channels; i++) {
+				r.push_back(-1);
 			}
 
-			listener->layout      = layout;
-			listener->muted_chs   = listener->_get_muted_chs(listener->route);
-			listener->unmuted_chs = listener->_get_unmuted_chs(listener->route);
+			_listener->setRoute(r);
 
-			if (previous_device != _device)
-				buffer->add_listener(listener);
+			obs_source_audio out;
+			out.speakers = layout;
+			_listener->setOutput(out);
+
+			_listener->setCallback(callback);
+			if (cb != callback) {
+				_listener->reconnect();
+				callback->add_client(_listener);
+			}
 		} else {
-			listener->disconnect();
+			_listener->disconnect();
+			if (cb)
+				cb->remove_client(_listener);
 		}
 	}
 
@@ -369,9 +619,13 @@ public:
 		struct obs_audio_info aoi;
 		obs_get_audio_info(&aoi);
 		int recorded_channels = get_audio_channels(aoi.speakers);
-
+		int max_channels      = get_max_obs_channels();
 		// default is muted channels
 		for (int i = 0; i < recorded_channels; i++) {
+			std::string name = "route " + std::to_string(i);
+			obs_data_set_default_int(settings, name.c_str(), -1);
+		}
+		for (int i = recorded_channels; i < max_channels; i++) {
 			std::string name = "route " + std::to_string(i);
 			obs_data_set_default_int(settings, name.c_str(), -1);
 		}
@@ -382,12 +636,15 @@ public:
 	static const char *Name(void *unused)
 	{
 		UNUSED_PARAMETER(unused);
-		return obs_module_text("ASIO");
+		return obs_module_text("ASIO Input Capture");
 	}
 };
 
 static bool show_panel(obs_properties_t *props, obs_property_t *property, void *data)
 {
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(property);
+
 	if (!data)
 		return false;
 	ASIOPlugin *   plugin = static_cast<ASIOPlugin *>(data);
@@ -410,9 +667,8 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 		std::string    n      = cb->getName();
 		if (n == name) {
 			if (!device) {
-				String deviceName             = name.c_str();
-				device                        = deviceTypeAsio->createDevice(deviceName, deviceName);
-				cb->getBuffer()->device_index = (uint64_t)device;
+				String deviceName = name.c_str();
+				device            = deviceTypeAsio->createDevice(deviceName, deviceName);
 				cb->setDevice(device, name.c_str());
 			}
 			_device   = device;
@@ -438,18 +694,16 @@ static bool fill_out_channels_modified(obs_properties_t *props, obs_property_t *
 	return true;
 }
 
-// main callback when a device is switched; takes care of the logic for updating the clients (listeners)
-static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
+static bool asio_device_changed(void *vptr, obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
-	size_t          i;
-	const char *    curDeviceId = obs_data_get_string(settings, "device_id");
-	obs_property_t *route[MAX_AUDIO_CHANNELS];
-	speaker_layout  layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
+	size_t                        i;
+	const char *                  curDeviceId  = obs_data_get_string(settings, "device_id");
+	int                           max_channels = get_max_obs_channels();
+	std::vector<obs_property_t *> route(max_channels, nullptr);
+	speaker_layout                layout = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
+	obs_property_t *              panel  = obs_properties_get(props, "ctrl");
 
 	int recorded_channels = get_audio_channels(layout);
-	// get channel number from output speaker layout set by obs
-	// DWORD recorded_channels = get_obs_output_channels();
-	// be sure to set device as current one
 
 	size_t itemCount = obs_property_list_item_count(list);
 	bool   itemFound = false;
@@ -466,7 +720,7 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 		obs_property_list_insert_string(list, 0, " ", curDeviceId);
 		obs_property_list_item_disable(list, 0, true);
 	} else {
-		for (i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+		for (i = 0; i < max_channels; i++) {
 			std::string name = "route " + std::to_string(i);
 			route[i]         = obs_properties_get(props, name.c_str());
 			obs_property_list_clear(route[i]);
@@ -475,16 +729,24 @@ static bool asio_device_changed(obs_properties_t *props, obs_property_t *list, o
 		}
 	}
 
+	ASIOPlugin *plugin = static_cast<ASIOPlugin *>(vptr);
+	if (plugin) {
+		juce::AudioIODevice *device = plugin->getDevice();
+		obs_property_set_visible(panel, device && device->hasControlPanel());
+	}
+
 	return true;
 }
 
 static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, obs_data_t *settings)
 {
-	obs_property_t *route[MAX_AUDIO_CHANNELS];
-	speaker_layout  layout            = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
-	int             recorded_channels = get_audio_channels(layout);
-	int             i                 = 0;
-	for (i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+	UNUSED_PARAMETER(list);
+	int                           max_channels = get_max_obs_channels();
+	std::vector<obs_property_t *> route(max_channels, nullptr);
+	speaker_layout                layout            = (speaker_layout)obs_data_get_int(settings, "speaker_layout");
+	int                           recorded_channels = get_audio_channels(layout);
+	int                           i                 = 0;
+	for (i = 0; i < max_channels; i++) {
 		std::string name = "route " + std::to_string(i);
 		route[i]         = obs_properties_get(props, name.c_str());
 		obs_property_list_clear(route[i]);
@@ -496,27 +758,22 @@ static bool asio_layout_changed(obs_properties_t *props, obs_property_t *list, o
 
 static void fill_out_devices(obs_property_t *prop)
 {
-
 	StringArray deviceNames(deviceTypeAsio->getDeviceNames());
 	for (int j = 0; j < deviceNames.size(); j++) {
 		bool found = false;
 		for (int i = 0; i < callbacks.size(); i++) {
-			AudioCB *      cb     = callbacks[i];
-			AudioIODevice *device = cb->getDevice();
-			std::string    n      = cb->getName();
+			AudioCB *   cb = callbacks[i];
+			std::string n  = cb->getName();
 			if (deviceNames[j].toStdString() == n) {
 				found = true;
 				break;
 			}
 		}
 		if (!found) {
-			device_buffer *buffer       = new device_buffer();
-			char *         name         = bstrdup(deviceNames[j].toStdString().c_str());
-			buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
-			AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
+			char *   name = bstrdup(deviceNames[j].toStdString().c_str());
+			AudioCB *cb   = new AudioCB(nullptr, name);
 			bfree(name);
 			callbacks.push_back(cb);
-			buffers.push_back(buffer);
 		}
 	}
 
@@ -529,14 +786,6 @@ static void fill_out_devices(obs_property_t *prop)
 	}
 }
 
-char *os_replace_slash(const char *dir)
-{
-	dstr dir_str;
-	dstr_init_copy(&dir_str, dir);
-	dstr_replace(&dir_str, "\\", "/");
-	return dir_str.array;
-}
-
 bool obs_module_load(void)
 {
 	obs_audio_info aoi;
@@ -547,25 +796,24 @@ bool obs_module_load(void)
 	deviceTypeAsio->scanForDevices();
 	StringArray deviceNames(deviceTypeAsio->getDeviceNames());
 	for (int j = 0; j < deviceNames.size(); j++) {
-		device_buffer *buffer       = new device_buffer();
-		char *         name         = bstrdup(deviceNames[j].toStdString().c_str());
-		buffer->device_options.name = bstrdup(deviceNames[j].toStdString().c_str());
-		AudioCB *cb                 = new AudioCB(buffer, nullptr, name);
+		char *name = bstrdup(deviceNames[j].toStdString().c_str());
+
+		AudioCB *cb = new AudioCB(nullptr, name);
 		bfree(name);
 		callbacks.push_back(cb);
-		buffers.push_back(buffer);
 	}
 
 	struct obs_source_info asio_input_capture = {};
 	asio_input_capture.id                     = "asio_input_capture";
 	asio_input_capture.type                   = OBS_SOURCE_TYPE_INPUT;
-	asio_input_capture.output_flags           = OBS_SOURCE_AUDIO;
+	asio_input_capture.output_flags           = OBS_SOURCE_AUDIO | OBS_SOURCE_DO_NOT_DUPLICATE;
 	asio_input_capture.create                 = ASIOPlugin::Create;
 	asio_input_capture.destroy                = ASIOPlugin::Destroy;
 	asio_input_capture.update                 = ASIOPlugin::Update;
 	asio_input_capture.get_defaults           = ASIOPlugin::Defaults;
 	asio_input_capture.get_name               = ASIOPlugin::Name;
 	asio_input_capture.get_properties         = ASIOPlugin::Properties;
+	asio_input_capture.icon_type              = OBS_ICON_TYPE_AUDIO_INPUT;
 
 	obs_register_source(&asio_input_capture);
 	return true;
@@ -583,17 +831,9 @@ void obs_module_unload(void)
 				device->close();
 			delete device;
 		}
-		device                = nullptr;
-		device_buffer *buffer = cb->getBuffer();
-		bfree((char *)buffer->device_options.name);
-		delete buffer;
+		device = nullptr;
 		delete cb;
 	}
 
-	MessageManager *m = MessageManager::getInstanceWithoutCreating();
-	if (m) {
-		m->stopDispatchLoop();
-		m->deleteInstance();
-	}
 	delete deviceTypeAsio;
 }
