@@ -3443,28 +3443,15 @@ obs_source_output_audio_track(obs_source_t *source,
 {
 	struct obs_audio_data *output;
 
-	if (!source)
+	if (!obs_source_valid(source, "obs_source_output_audio_track"))
 		return NULL;
-	if (!audio)
+	if (!obs_ptr_valid(audio, "obs_source_output_audio_track"))
 		return NULL;
 
 	process_audio(source, audio);
 
 	pthread_mutex_lock(&source->filter_mutex);
 	output = filter_async_audio(source, &source->audio_data);
-	if (output) {
-		struct audio_data data;
-
-		for (int i = 0; i < MAX_AV_PLANES; i++)
-			data.data[i] = output->data[i];
-
-		data.frames = output->frames;
-		data.timestamp = output->timestamp;
-
-		pthread_mutex_lock(&source->audio_mutex);
-		source_output_audio_data(source, &data);
-		pthread_mutex_unlock(&source->audio_mutex);
-	}
 	pthread_mutex_unlock(&source->filter_mutex);
 	return output;
 }
@@ -3472,11 +3459,25 @@ obs_source_output_audio_track(obs_source_t *source,
 void obs_source_output_audio(obs_source_t *source,
 			     const struct obs_source_audio *audio)
 {
+	struct obs_audio_data *output;
 	if (!obs_source_valid(source, "obs_source_output_audio"))
 		return;
 	if (!obs_ptr_valid(audio, "obs_source_output_audio"))
 		return;
-	obs_source_output_audio_track(source, audio);
+	process_audio(source, audio);
+	pthread_mutex_lock(&source->filter_mutex);
+	output = filter_async_audio(source, &source->audio_data);
+	if (output) {
+		struct audio_data data;
+		for (int i = 0; i < MAX_AV_PLANES; i++)
+			data.data[i] = output->data[i];
+		data.frames = output->frames;
+		data.timestamp = output->timestamp;
+		pthread_mutex_lock(&source->audio_mutex);
+		source_output_audio_data(source, &data);
+		pthread_mutex_unlock(&source->audio_mutex);
+	}
+	pthread_mutex_unlock(&source->filter_mutex);
 }
 
 void remove_async_frame(obs_source_t *source, struct obs_source_frame *frame)
@@ -4947,8 +4948,7 @@ static inline void process_audio_source_tick(obs_source_t *source,
 			mix_and_val = 1;
 		}
 
-		if ((source->audio_mixers & mix_and_val) == 0 ||
-		    (mixers & mix_and_val) == 0) {
+		if ((source->audio_mixers & mix_and_val) == 0) {
 			memset(source->audio_output_buf[mix][0], 0,
 			       size * channels);
 			continue;

@@ -733,6 +733,20 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 	return true;
 }
 
+bool obs_fader_attach_float(obs_fader_t *fader, float *vol)
+{
+	if (!fader || !vol)
+		return false;
+
+	pthread_mutex_lock(&fader->mutex);
+	fader->vol = vol;
+	fader->source = NULL;
+	fader->cur_db = mul_to_db(*vol);
+	pthread_mutex_unlock(&fader->mutex);
+
+	return true;
+}
+
 void obs_fader_detach_source(obs_fader_t *fader)
 {
 	signal_handler_t *sh;
@@ -846,6 +860,20 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 	return true;
 }
 
+bool obs_volmeter_attach_float(obs_volmeter_t *volmeter, float *vol)
+{
+
+	if (!volmeter || !vol)
+		return false;
+
+	pthread_mutex_lock(&volmeter->mutex);
+	volmeter->source = NULL;
+	volmeter->cur_db = mul_to_db(*vol);
+	pthread_mutex_unlock(&volmeter->mutex);
+
+	return true;
+}
+
 void obs_volmeter_detach_source(obs_volmeter_t *volmeter)
 {
 	signal_handler_t *sh;
@@ -905,21 +933,18 @@ unsigned int obs_volmeter_get_update_interval(obs_volmeter_t *volmeter)
 int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 {
 	int source_nr_audio_channels;
-	int obs_nr_audio_channels;
-
-	if (volmeter->source) {
-		source_nr_audio_channels = get_audio_channels(
-			volmeter->source->sample_info.speakers);
-	} else {
-		source_nr_audio_channels = 1;
-	}
+	int obs_nr_audio_channels = 2;
 
 	struct obs_audio_info audio_info;
 	if (obs_get_audio_info(&audio_info)) {
 		obs_nr_audio_channels = get_audio_channels(audio_info.speakers);
-	} else {
-		obs_nr_audio_channels = 2;
 	}
+
+	if (volmeter->source)
+		source_nr_audio_channels = get_audio_channels(
+			volmeter->source->sample_info.speakers);
+	else
+		source_nr_audio_channels = obs_nr_audio_channels;
 
 	return CLAMP(source_nr_audio_channels, 1, obs_nr_audio_channels);
 }
