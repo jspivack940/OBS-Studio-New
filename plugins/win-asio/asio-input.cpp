@@ -422,11 +422,14 @@ public:
 
 	ASIOPlugin::~ASIOPlugin()
 	{
-		AudioCB *cb = _listener->getCallback();
-		_listener->disconnect();
-		if (cb)
-			cb->remove_client(_listener);
-		delete _listener;
+		if (_listener) {
+			AudioCB *cb = _listener->getCallback();
+			_listener->disconnect();
+			if (cb)
+				cb->remove_client(_listener);
+			delete _listener;
+			_listener = nullptr;
+		}
 	}
 
 	static void *Create(obs_data_t *settings, obs_source_t *source)
@@ -451,7 +454,7 @@ public:
 		UNUSED_PARAMETER(data);
 		QMainWindow *main_window = (QMainWindow *)obs_frontend_get_main_window();
 		QMessageBox  mybox(main_window);
-		QString      text = "v.2.0.2\r\n © 2020, license GPL v3\r\n"
+		QString      text = "v.2.0.3\r\n © 2020, license GPL v3\r\n"
 			       "Based on Juce library\r\n\r\n"
 			       "Authors:\r\n"
 			       "Andersama (main author) & pkv\r\n";
@@ -835,7 +838,8 @@ void obs_module_unload(void)
 		}
 		device = nullptr;
 		delete cb;
+		callbacks[i] = nullptr;
 	}
-
+	callbacks.clear();
 	delete deviceTypeAsio;
 }
