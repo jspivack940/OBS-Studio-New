@@ -3925,18 +3925,14 @@ void init_sparkle_updater(bool update_to_undeployed);
 void trigger_sparkle_update();
 #endif
 
-void OBSBasic::TimedCheckForUpdates()
-{
-}
+void OBSBasic::TimedCheckForUpdates() {}
 
 void OBSBasic::CheckForUpdates(bool manualUpdate)
 {
 	UNUSED_PARAMETER(manualUpdate);
 }
 
-void OBSBasic::updateCheckFinished()
-{
-}
+void OBSBasic::updateCheckFinished() {}
 
 void OBSBasic::DuplicateSelectedScene()
 {
