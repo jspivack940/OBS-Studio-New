@@ -1589,6 +1589,7 @@ bool obs_module_load(void)
 	asio_input_capture.get_defaults = asio_get_defaults;
 	asio_input_capture.get_name = asio_get_name;
 	asio_input_capture.get_properties = asio_get_properties;
+	asio_input_capture.icon_type = OBS_ICON_TYPE_AUDIO_INPUT;
 
 	uint8_t devices = getDeviceCount();
 	device_list.reserve(devices);
