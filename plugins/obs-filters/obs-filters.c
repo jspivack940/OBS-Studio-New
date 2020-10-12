@@ -23,6 +23,8 @@ extern struct obs_source_info async_delay_filter;
 #if NOISEREDUCTION_ENABLED
 extern struct obs_source_info noise_suppress_filter;
 extern struct obs_source_info noise_suppress_filter_v2;
+extern bool load_nvafx();
+extern void release_lib();
 #endif
 extern struct obs_source_info invert_polarity_filter;
 extern struct obs_source_info noise_gate_filter;
@@ -46,6 +48,14 @@ bool obs_module_load(void)
 	obs_register_source(&chroma_key_filter);
 	obs_register_source(&async_delay_filter);
 #if NOISEREDUCTION_ENABLED
+#ifdef LIBNVAFX_ENABLED
+	/* load nvidia audio fx dll */
+	if (!load_nvafx()) {
+		printf("[noise suppress: Unable to load NVAudioEffects.dll.]");
+	} else {
+		printf("[noise suppress: NVAudioEffects.dll loaded.]");
+	}
+#endif
 	obs_register_source(&noise_suppress_filter);
 	obs_register_source(&noise_suppress_filter_v2);
 #endif
@@ -57,3 +67,10 @@ bool obs_module_load(void)
 	obs_register_source(&luma_key_filter);
 	return true;
 }
+
+#ifdef LIBNVAFX_ENABLED
+void obs_module_unload(void)
+{
+	release_lib();
+}
+#endif
