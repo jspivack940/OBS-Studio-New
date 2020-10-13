@@ -25,11 +25,21 @@ if(NOT LIBRNNOISE_FOUND)
 	set(LIBRNNOISE_FOUND TRUE)
 endif()
 
-if(LIBSPEEXDSP_FOUND OR LIBRNNOISE_FOUND)
+if(DISABLE_NVAFX)
+	message(STATUS "Nvidia Audio FX support disabled")
+	set(LIBNVAFX_FOUND FALSE)
+else()
+	find_package(Libnvafx)
+	if(LIBNVAFX_FOUND)
+		add_definitions(-DLIBNVAFX_ENABLED)
+	endif()
+endif()
+
+if(LIBSPEEXDSP_FOUND OR LIBRNNOISE_FOUND OR LIBNVAFX_FOUND)
 	set(obs-filters_NOISEREDUCTION_SOURCES
 		noise-suppress-filter.c)
 	set(obs-filters_NOISEREDUCTION_LIBRARIES
-		${LIBSPEEXDSP_LIBRARIES} ${LIBRNNOISE_LIBRARIES})
+		${LIBSPEEXDSP_LIBRARIES} ${LIBRNNOISE_LIBRARIES} ${LIBNVAFX_LIBRARIES})
 	set(NOISEREDUCTION_ENABLED TRUE)
 else()
 	set(NOISEREDUCTION_ENABLED FALSE)
@@ -40,7 +50,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/obs-filters-config.h.in"
 
 set(obs-filters_config_HEADERS
 	"${CMAKE_BINARY_DIR}/plugins/obs-filters/config/obs-filters-config.h")
-include_directories(${LIBSPEEXDSP_INCLUDE_DIRS} ${LIBRNNOISE_INCLUDE_DIRS}
+include_directories(${LIBSPEEXDSP_INCLUDE_DIRS} ${LIBRNNOISE_INCLUDE_DIRS} ${LIBNVAFX_INCLUDE_DIRS}
 	"${CMAKE_BINARY_DIR}/plugins/obs-filters/config")
 
 if(MSVC)
@@ -84,7 +94,8 @@ add_library(obs-filters MODULE
 target_link_libraries(obs-filters
 	libobs
 	${obs-filters_PLATFORM_DEPS}
-	${obs-filters_NOISEREDUCTION_LIBRARIES})
+	${obs-filters_NOISEREDUCTION_LIBRARIES}
+	)
 set_target_properties(obs-filters PROPERTIES FOLDER "plugins")
 
 install_obs_plugin_with_data(obs-filters data)

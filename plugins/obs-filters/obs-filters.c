@@ -1,6 +1,8 @@
 #include <obs-module.h>
 #include "obs-filters-config.h"
-
+#ifdef LIBNVAFX_ENABLED
+#include "nvafx-load.h"
+#endif
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-filters", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
@@ -31,6 +33,8 @@ extern struct obs_source_info limiter_filter;
 extern struct obs_source_info expander_filter;
 extern struct obs_source_info luma_key_filter;
 
+
+
 bool obs_module_load(void)
 {
 	obs_register_source(&mask_filter);
@@ -46,6 +50,14 @@ bool obs_module_load(void)
 	obs_register_source(&chroma_key_filter);
 	obs_register_source(&async_delay_filter);
 #if NOISEREDUCTION_ENABLED
+#ifdef LIBNVAFX_ENABLED
+	/* load nvidia audio fx dll */
+	if (!load_lib()) {
+		printf("[noise suppress: Unable to load NVAudioEffects.dll.]");
+	} else {
+		printf("[noise suppress: NVAudioEffects.dll loaded.]");
+	}
+#endif
 	obs_register_source(&noise_suppress_filter);
 	obs_register_source(&noise_suppress_filter_v2);
 #endif
@@ -57,3 +69,10 @@ bool obs_module_load(void)
 	obs_register_source(&luma_key_filter);
 	return true;
 }
+
+#ifdef LIBNVAFX_ENABLED
+void obs_module_unload(void)
+{
+	release_lib();
+}
+#endif
