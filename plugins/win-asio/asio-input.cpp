@@ -958,6 +958,7 @@ void obs_module_unload(void)
 
 	delete deviceTypeAsio;
 	delete deviceTypeWasapi;
+	DeletedAtShutdown::deleteAll();
 	MessageManager::deleteInstance();
 	if (!global_thread->stopThread(200))
 		blog(LOG_ERROR, "win-asio: Thread had to be force-stopped");
