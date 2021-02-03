@@ -3443,9 +3443,9 @@ obs_source_output_audio_track(obs_source_t *source,
 {
 	struct obs_audio_data *output;
 
-	if (!obs_source_valid(source, "obs_source_output_audio_track"))
+	if (!source)//(!obs_source_valid(source, "obs_source_output_audio_track"))
 		return NULL;
-	if (!obs_ptr_valid(audio, "obs_source_output_audio_track"))
+	if (!audio)//(!obs_ptr_valid(audio, "obs_source_output_audio_track"))
 		return NULL;
 
 	process_audio(source, audio);
