@@ -913,7 +913,9 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		config_get_bool(main->Config(), "Output", "LowLatencyEnable");
 	bool enableDynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
-
+	const char *dbrPresetString =
+		config_get_string(main->Config(), "Output", "DynamicBitratePreset");
+	int dbrPreset = dbrPresetString == "Fast" ? 1 : 0;
 	obs_data_t *settings = obs_data_create();
 	obs_data_set_string(settings, "bind_ip", bindIP);
 	obs_data_set_bool(settings, "new_socket_loop_enabled",
@@ -921,6 +923,7 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 	obs_data_set_bool(settings, "low_latency_mode_enabled",
 			  enableLowLatencyMode);
 	obs_data_set_bool(settings, "dyn_bitrate", enableDynBitrate);
+	obs_data_set_int(settings, "dyn_bitrate_preset", dbrPreset);
 	obs_output_update(streamOutput, settings);
 	obs_data_release(settings);
 
@@ -1806,7 +1809,9 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 		config_get_bool(main->Config(), "Output", "LowLatencyEnable");
 	bool enableDynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
-
+	const char *dbrPresetString = config_get_string(
+		main->Config(), "Output", "DynamicBitratePreset");
+	int dbrPreset = dbrPresetString == "Fast" ? 1 : 0;
 	obs_data_t *settings = obs_data_create();
 	obs_data_set_string(settings, "bind_ip", bindIP);
 	obs_data_set_bool(settings, "new_socket_loop_enabled",
@@ -1814,6 +1819,7 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 	obs_data_set_bool(settings, "low_latency_mode_enabled",
 			  enableLowLatencyMode);
 	obs_data_set_bool(settings, "dyn_bitrate", enableDynBitrate);
+	obs_data_set_int(settings, "dyn_bitrate_preset", dbrPreset);
 	obs_output_update(streamOutput, settings);
 	obs_data_release(settings);
 

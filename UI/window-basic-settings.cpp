@@ -559,6 +559,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->hotkeyFocusType,      COMBO_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->autoRemux,            CHECK_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->dynBitrate,           CHECK_CHANGED,  ADV_CHANGED);
+	HookWidget(ui->dbrPresets,           COMBO_CHANGED,  ADV_CHANGED);
 	/* clang-format on */
 
 #define ADD_HOTKEY_FOCUS_TYPE(s)      \
@@ -2533,7 +2534,14 @@ void OBSBasicSettings::LoadAdvancedSettings()
 		App()->GlobalConfig(), "General", "HotkeyFocusType");
 	bool dynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
-
+	const char *presetsDbr =
+		config_get_string(main->Config(), "Output", "DynamicBitratePreset");
+	if (strcmp(presetsDbr, "Fast") == 0)
+		ui->dbrPresets->setCurrentIndex(0);
+	else
+		ui->dbrPresets->setCurrentIndex(1);
+	ui->dbrPresets->setHidden(!dynBitrate);
+	ui->label_68->setHidden(!dynBitrate);
 	loading = true;
 
 	LoadRendererList();
@@ -3284,6 +3292,11 @@ void OBSBasicSettings::SaveAdvancedSettings()
 	SaveComboData(ui->bindToIP, "Output", "BindIP");
 	SaveCheckBox(ui->autoRemux, "Video", "AutoRemux");
 	SaveCheckBox(ui->dynBitrate, "Output", "DynamicBitrate");
+	int dbrIdx = ui->dbrPresets->currentIndex();
+	const char *dbrPresetsSetup;
+	dbrPresetsSetup = dbrIdx == 0 ? "Fast" : "Slow";
+	if (WidgetChanged(ui->dbrPresets))
+		config_set_string(main->Config(), "Output", "DynamicBitratePreset", dbrPresetsSetup);
 
 #if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
 	QString newDevice = ui->monitoringDevice->currentData().toString();
@@ -4074,6 +4087,13 @@ void OBSBasicSettings::on_colorFormat_currentIndexChanged(const QString &text)
 	else
 		ui->advancedMsg2->setText(
 			QTStr("Basic.Settings.Advanced.FormatWarning"));
+}
+
+void OBSBasicSettings::on_dynBitrate_stateChanged(int state)
+{
+	bool isChecked = state == 0 ? false : true;
+	ui->dbrPresets->setHidden(!isChecked);
+	ui->label_68->setHidden(!isChecked);
 }
 
 #define INVALID_RES_STR "Basic.Settings.Video.InvalidResolution"

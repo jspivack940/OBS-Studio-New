@@ -349,6 +349,7 @@ private slots:
 	void on_advOutFFAEncoder_currentIndexChanged(int idx);
 	void on_advOutFFVEncoder_currentIndexChanged(int idx);
 	void on_advOutFFType_currentIndexChanged(int idx);
+	void on_dynBitrate_stateChanged(int);
 
 	void on_colorFormat_currentIndexChanged(const QString &text);
 
