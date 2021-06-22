@@ -2135,7 +2135,6 @@ obs_data_array_t *obs_save_sources_filtered(obs_save_source_filter_cb cb,
 
 	while (source) {
 		if ((source->info.type != OBS_SOURCE_TYPE_FILTER) != 0 &&
-<<<<<<< HEAD
 		    !source->context.private && !source->removed &&
 		    !(source->info.output_flags & OBS_SOURCE_TRACK) &&
 		    !source->temp_removed && cb(data_, source)) {
