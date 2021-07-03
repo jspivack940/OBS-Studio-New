@@ -913,8 +913,8 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		config_get_bool(main->Config(), "Output", "LowLatencyEnable");
 	bool enableDynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
-	const char *dbrPresetString =
-		config_get_string(main->Config(), "Output", "DynamicBitratePreset");
+	const char *dbrPresetString = config_get_string(
+		main->Config(), "Output", "DynamicBitratePreset");
 	int dbrPreset = dbrPresetString == "Fast" ? 1 : 0;
 	obs_data_t *settings = obs_data_create();
 	obs_data_set_string(settings, "bind_ip", bindIP);

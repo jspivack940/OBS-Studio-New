@@ -1475,7 +1475,8 @@ static void rtmp_stream_defaults(obs_data_t *defaults)
 {
 	obs_data_set_default_int(defaults, OPT_DROP_THRESHOLD, 700);
 	obs_data_set_default_int(defaults, OPT_PFRAME_DROP_THRESHOLD, 900);
-	obs_data_set_default_int(defaults, OPT_DYN_PRESET, OPT_DYN_PRESET_FASTER);
+	obs_data_set_default_int(defaults, OPT_DYN_PRESET,
+				 OPT_DYN_PRESET_FASTER);
 	obs_data_set_default_int(defaults, OPT_MAX_SHUTDOWN_TIME_SEC, 30);
 	obs_data_set_default_string(defaults, OPT_BIND_IP, "default");
 	obs_data_set_default_bool(defaults, OPT_NEWSOCKETLOOP_ENABLED, false);
@@ -1514,12 +1515,13 @@ static obs_properties_t *rtmp_stream_properties(void *unused)
 				obs_module_text("RTMPStream.LowLatencyMode"));
 	p = obs_properties_add_list(props, OPT_DYN_PRESET,
 				    obs_module_text("RTMPStream.Presets"),
-				    OBS_COMBO_TYPE_LIST,
-				    OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(p, obs_module_text("RTMPStream.Presets.Faster"),
+				    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p,
+				  obs_module_text("RTMPStream.Presets.Faster"),
 				  OPT_DYN_PRESET_FASTER);
-	obs_property_list_add_int(
-		p, obs_module_text("RTMPStream.Presets.Slower"), OPT_DYN_PRESET_SLOWER);
+	obs_property_list_add_int(p,
+				  obs_module_text("RTMPStream.Presets.Slower"),
+				  OPT_DYN_PRESET_SLOWER);
 	return props;
 }
 

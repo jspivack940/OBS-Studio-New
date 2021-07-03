@@ -2534,8 +2534,8 @@ void OBSBasicSettings::LoadAdvancedSettings()
 		App()->GlobalConfig(), "General", "HotkeyFocusType");
 	bool dynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
-	const char *presetsDbr =
-		config_get_string(main->Config(), "Output", "DynamicBitratePreset");
+	const char *presetsDbr = config_get_string(main->Config(), "Output",
+						   "DynamicBitratePreset");
 	if (strcmp(presetsDbr, "Fast") == 0)
 		ui->dbrPresets->setCurrentIndex(0);
 	else
@@ -3296,7 +3296,8 @@ void OBSBasicSettings::SaveAdvancedSettings()
 	const char *dbrPresetsSetup;
 	dbrPresetsSetup = dbrIdx == 0 ? "Fast" : "Slow";
 	if (WidgetChanged(ui->dbrPresets))
-		config_set_string(main->Config(), "Output", "DynamicBitratePreset", dbrPresetsSetup);
+		config_set_string(main->Config(), "Output",
+				  "DynamicBitratePreset", dbrPresetsSetup);
 
 #if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
 	QString newDevice = ui->monitoringDevice->currentData().toString();

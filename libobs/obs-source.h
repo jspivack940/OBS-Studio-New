@@ -196,7 +196,7 @@ enum obs_media_state {
  */
 #define OBS_SOURCE_SRGB (1 << 15)
 
- /**
+/**
  * Source type is a track and should not be shown to the user
  */
 #define OBS_SOURCE_TRACK (1 << 16)

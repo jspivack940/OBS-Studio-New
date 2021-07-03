@@ -4994,7 +4994,6 @@ void OBSBasic::on_actionAdvAudioProperties_triggered()
 
 	connect(advAudioWindow, SIGNAL(destroyed()), this,
 		SLOT(AdvAudioPropsDestroyed()));
-
 }
 
 void OBSBasic::AdvAudioPropsClicked()
