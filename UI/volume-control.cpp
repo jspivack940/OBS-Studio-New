@@ -269,24 +269,8 @@ void VolControl::showTracksButtons(bool show)
 
 void VolControl::SliderChanged(int vol)
 {
-	float prev = obs_source_get_volume(source);
-
 	obs_fader_set_deflection(obs_fader, float(vol) / FADER_PRECISION);
 	updateText();
-
-	auto undo_redo = [](const std::string &name, float val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_volume(source, val);
-		obs_source_release(source);
-	};
-
-	float val = obs_source_get_volume(source);
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.Volume.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, val), name, name,
-		true);
 }
 
 void VolControl::updateText()

@@ -369,8 +369,6 @@ void OBSAdvAudioCtrl::SourceMixersChanged(uint32_t mixers)
 
 void OBSAdvAudioCtrl::volumeChanged(double db)
 {
-	float prev = obs_source_get_volume(source);
-
 	if (db < MIN_DB) {
 		volume->setSpecialValueText("-inf dB");
 		db = -INFINITY;
@@ -378,87 +376,29 @@ void OBSAdvAudioCtrl::volumeChanged(double db)
 
 	float val = obs_db_to_mul(db);
 	obs_source_set_volume(source, val);
-
-	auto undo_redo = [](const std::string &name, float val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_volume(source, val);
-		obs_source_release(source);
-	};
-
-	const char *name = obs_source_get_name(source);
-
-	OBSBasic *main = OBSBasic::Get();
-	main->undo_s.add_action(
-		QTStr("Undo.Volume.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, val), name, name,
-		true);
 }
 
 void OBSAdvAudioCtrl::percentChanged(int percent)
 {
-	float prev = obs_source_get_volume(source);
-	float val = (float)percent / 100.0f;
-
-	obs_source_set_volume(source, val);
-
-	auto undo_redo = [](const std::string &name, float val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_volume(source, val);
-		obs_source_release(source);
-	};
-
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.Volume.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, val), name, name,
-		true);
+	obs_source_set_volume(source, (float)percent / 100.0f);
 }
 
-static inline void set_mono(obs_source_t *source, bool mono)
-{
-	uint32_t flags = obs_source_get_flags(source);
-	if (mono)
-		flags |= OBS_SOURCE_FLAG_FORCE_MONO;
-	else
-		flags &= ~OBS_SOURCE_FLAG_FORCE_MONO;
-	obs_source_set_flags(source, flags);
-}
-
-void OBSAdvAudioCtrl::downmixMonoChanged(bool val)
+void OBSAdvAudioCtrl::downmixMonoChanged(bool checked)
 {
 	uint32_t flags = obs_source_get_flags(source);
 	bool forceMonoActive = (flags & OBS_SOURCE_FLAG_FORCE_MONO) != 0;
 
-	if (forceMonoActive == val)
-		return;
-
-	if (val)
-		flags |= OBS_SOURCE_FLAG_FORCE_MONO;
-	else
-		flags &= ~OBS_SOURCE_FLAG_FORCE_MONO;
-
-	obs_source_set_flags(source, flags);
-
-	auto undo_redo = [](const std::string &name, bool val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		set_mono(source, val);
-		obs_source_release(source);
-	};
-
-	QString text = QTStr(val ? "Undo.ForceMono.On" : "Undo.ForceMono.Off");
-
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		text.arg(name),
-		std::bind(undo_redo, std::placeholders::_1, !val),
-		std::bind(undo_redo, std::placeholders::_1, val), name, name);
+	if (forceMonoActive != checked) {
+		if (checked)
+			flags |= OBS_SOURCE_FLAG_FORCE_MONO;
+		else
+			flags &= ~OBS_SOURCE_FLAG_FORCE_MONO;
+		obs_source_set_flags(source, flags);
+	}
 }
 
 void OBSAdvAudioCtrl::balanceChanged(int val)
 {
-	float prev = obs_source_get_balance_value(source);
 	float bal = (float)val / 100.0f;
 
 	if (abs(50 - val) < 10) {
@@ -469,19 +409,6 @@ void OBSAdvAudioCtrl::balanceChanged(int val)
 	}
 
 	obs_source_set_balance_value(source, bal);
-
-	auto undo_redo = [](const std::string &name, float val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_balance_value(source, val);
-		obs_source_release(source);
-	};
-
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.Balance.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, bal), name, name,
-		true);
 }
 
 void OBSAdvAudioCtrl::ResetBalance()
@@ -491,26 +418,11 @@ void OBSAdvAudioCtrl::ResetBalance()
 
 void OBSAdvAudioCtrl::syncOffsetChanged(int milliseconds)
 {
-	int64_t prev = obs_source_get_sync_offset(source);
-	int64_t val = int64_t(milliseconds) * NSEC_PER_MSEC;
+	int64_t cur_val = obs_source_get_sync_offset(source);
 
-	if (prev / NSEC_PER_MSEC == milliseconds)
-		return;
-
-	obs_source_set_sync_offset(source, val);
-
-	auto undo_redo = [](const std::string &name, int64_t val) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_sync_offset(source, val);
-		obs_source_release(source);
-	};
-
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.SyncOffset.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, prev),
-		std::bind(undo_redo, std::placeholders::_1, val), name, name,
-		true);
+	if (cur_val / NSEC_PER_MSEC != milliseconds)
+		obs_source_set_sync_offset(source, int64_t(milliseconds) *
+							   NSEC_PER_MSEC);
 }
 
 static inline void setMixer(obs_source_t *source, const int mixerIdx,
@@ -525,19 +437,6 @@ static inline void setMixer(obs_source_t *source, const int mixerIdx,
 		new_mixers &= ~(1 << mixerIdx);
 
 	obs_source_set_audio_mixers(source, new_mixers);
-
-	auto undo_redo = [](const std::string &name, uint32_t mixers) {
-		obs_source_t *source = obs_get_source_by_name(name.c_str());
-		obs_source_set_audio_mixers(source, mixers);
-		obs_source_release(source);
-	};
-
-	const char *name = obs_source_get_name(source);
-	OBSBasic::Get()->undo_s.add_action(
-		QTStr("Undo.Mixers.Change").arg(name),
-		std::bind(undo_redo, std::placeholders::_1, mixers),
-		std::bind(undo_redo, std::placeholders::_1, new_mixers), name,
-		name);
 }
 
 void OBSAdvAudioCtrl::mixer1Changed(bool checked)
