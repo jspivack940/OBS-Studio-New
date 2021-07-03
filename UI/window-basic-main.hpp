@@ -37,6 +37,7 @@
 #include "auth-base.hpp"
 #include "log-viewer.hpp"
 #include "undo-stack-obs.hpp"
+#include "obs-proxy-style.hpp"
 
 #include <obs-frontend-internal.hpp>
 
@@ -558,6 +559,8 @@ private:
 
 	void MoveSceneItem(enum obs_order_movement movement,
 			   const QString &action_name);
+
+	OBSProxyStyle *obsstyle = nullptr;
 
 public slots:
 	void DeferSaveBegin();

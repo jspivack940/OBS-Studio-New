@@ -157,3 +157,9 @@ bool obs_module_load(void)
 
 	return true;
 }
+
+
+void obs_module_unload(void)
+{
+	delete captions;
+}

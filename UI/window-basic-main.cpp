@@ -56,7 +56,6 @@
 #include "window-remux.hpp"
 #include "qt-wrappers.hpp"
 #include "context-bar-controls.hpp"
-#include "obs-proxy-style.hpp"
 #include "display-helpers.hpp"
 #include "volume-control.hpp"
 #include "remote-text.hpp"
@@ -233,7 +232,9 @@ OBSBasic::OBSBasic(QWidget *parent)
 
 	ui->setupUi(this);
 	ui->previewDisabledWidget->setVisible(false);
-	ui->contextContainer->setStyle(new OBSProxyStyle);
+	OBSProxyStyle *mystyle = new OBSProxyStyle;
+	ui->contextContainer->setStyle(mystyle);
+	OBSBasic::obsstyle = mystyle;
 
 	/* XXX: Disable drag/drop on Linux until Qt issues are fixed */
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -501,8 +502,8 @@ static obs_data_t *GenerateSaveData(obs_data_array_t *sceneOrder,
 
 	obs_data_array_t *sourcesArray = obs_save_sources_filtered(
 		[](void *data, obs_source_t *source) {
-			return (*static_cast<FilterAudioSources_t *>(data))(
-				source);
+			return (*static_cast<FilterAudioSources_t *>(
+				data))(source);
 		},
 		static_cast<void *>(&FilterAudioSources));
 
@@ -2594,6 +2595,7 @@ OBSBasic::~OBSBasic()
 	if (updateCheckThread && updateCheckThread->isRunning())
 		updateCheckThread->wait();
 
+	delete obsstyle;
 	delete screenshotData;
 	delete logView;
 	delete multiviewProjectorMenu;
