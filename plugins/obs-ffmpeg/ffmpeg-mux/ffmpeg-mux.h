@@ -36,3 +36,9 @@ struct ffm_packet_info {
 	enum ffm_packet_type type;
 	bool keyframe;
 };
+
+#define SRT_PROTO "srt"
+#define UDP_PROTO "udp"
+#define TCP_PROTO "tcp"
+#define HTTP_PROTO "http"
+#define RIST_PROTO "rist"

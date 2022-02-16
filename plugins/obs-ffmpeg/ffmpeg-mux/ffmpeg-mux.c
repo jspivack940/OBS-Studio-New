@@ -25,10 +25,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "ffmpeg-mux.h"
+#include "ffmpeg-mux-srt.h"
+#include "ffmpeg-mux-rist.h"
 
 #include <util/dstr.h>
 #include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 
 #define ANSI_COLOR_RED "\x1b[0;91m"
@@ -127,6 +128,9 @@ struct ffmpeg_mux {
 	int num_audio_streams;
 	bool initialized;
 	char error[4096];
+	/* used for srt & rist */
+	URLContext *h;
+	AVIOContext *s;
 };
 
 static void header_free(struct header *header)
@@ -134,14 +138,53 @@ static void header_free(struct header *header)
 	free(header->data);
 }
 
+static int close_mpegts_url(struct ffmpeg_mux *ffm, bool is_rist)
+{
+	int err = 0;
+	AVIOContext *s = ffm->s;
+	if (!s)
+		return 0;
+	URLContext *h = s->opaque;
+	if (!h)
+		return 0; /* can happen when opening the url fails */
+
+	avio_flush(ffm->s);
+	ffm->s->opaque = NULL;
+	av_freep(&ffm->s->buffer);
+	avio_context_free(&ffm->s);
+	if (is_rist) {
+		err = librist_close(h);
+	} else {
+		err = libsrt_close(h);
+	}
+	av_freep(&h->priv_data);
+	av_freep(h);
+
+	return err;
+}
+
+static bool is_rist(struct ffmpeg_mux *ffm)
+{
+	return !strncmp(ffm->params.file, RIST_PROTO, sizeof(RIST_PROTO) - 1);
+}
+
+static bool is_srt(struct ffmpeg_mux *ffm)
+{
+	return !strncmp(ffm->params.file, SRT_PROTO, sizeof(SRT_PROTO) - 1);
+}
+
 static void free_avformat(struct ffmpeg_mux *ffm)
 {
 	if (ffm->output) {
 		avcodec_free_context(&ffm->video_ctx);
 
-		if ((ffm->output->oformat->flags & AVFMT_NOFILE) == 0)
-			avio_close(ffm->output->pb);
-
+		if ((ffm->output->oformat->flags & AVFMT_NOFILE) == 0) {
+			if (is_rist(ffm) || is_srt(ffm)) {
+				close_mpegts_url(ffm, is_rist(ffm));
+			} else {
+				avio_close(ffm->output->pb);
+			}
+		}
 		avformat_free_context(ffm->output);
 		ffm->output = NULL;
 	}
@@ -568,6 +611,89 @@ static inline bool ffmpeg_mux_get_extra_data(struct ffmpeg_mux *ffm)
 #pragma warning(disable : 4996)
 #endif
 
+int ff_network_init(void)
+{
+#if HAVE_WINSOCK2_H
+	WSADATA wsaData;
+
+	if (WSAStartup(MAKEWORD(1, 1), &wsaData))
+		return 0;
+#endif
+	return 1;
+}
+
+static inline int connect_mpegts_url(struct ffmpeg_mux *ffm, bool is_rist)
+{
+	int err = 0;
+	if (!ff_network_init())
+		return AVERROR(EIO);
+	URLContext *uc =
+		av_mallocz(sizeof(URLContext) + strlen(ffm->params.file) + 1);
+	if (!uc) {
+		err = AVERROR(ENOMEM);
+		goto fail;
+	}
+	uc->filename = ffm->params.file;
+	uc->max_packet_size = is_rist ? RIST_MAX_PAYLOAD_SIZE
+				      : SRT_LIVE_DEFAULT_PAYLOAD_SIZE;
+	uc->priv_data = is_rist ? av_mallocz(sizeof(RISTContext))
+				: av_mallocz(sizeof(SRTContext));
+	if (!uc->priv_data) {
+		err = AVERROR(ENOMEM);
+		goto fail;
+	}
+	ffm->h = uc;
+	if (is_rist)
+		err = librist_open(uc, uc->filename);
+	else
+		err = libsrt_open(uc, uc->filename);
+	return err;
+fail:
+	if (uc)
+		av_freep(&uc->priv_data);
+	av_freep(&uc);
+#if HAVE_WINSOCK2_H
+	WSACleanup();
+#endif
+	return err;
+}
+
+static inline int allocate_custom_aviocontext(struct ffmpeg_mux *ffm,
+					      bool is_rist)
+{
+	/* allocate buffers */
+	uint8_t *buffer = NULL;
+	int buffer_size;
+	URLContext *h = ffm->h;
+	AVIOContext *s = NULL;
+
+	buffer_size = UDP_DEFAULT_PAYLOAD_SIZE;
+
+	buffer = av_malloc(buffer_size);
+	if (!buffer)
+		return AVERROR(ENOMEM);
+	/* allocate custom avio_context */
+	if (is_rist)
+		s = avio_alloc_context(
+			buffer, buffer_size, AVIO_FLAG_WRITE, h, NULL,
+			(int (*)(void *, uint8_t *, int))librist_write, NULL);
+	else
+		s = avio_alloc_context(
+			buffer, buffer_size, AVIO_FLAG_WRITE, h, NULL,
+			(int (*)(void *, uint8_t *, int))libsrt_write, NULL);
+	if (!s)
+		goto fail;
+	s->max_packet_size = h->max_packet_size;
+	s->opaque = h;
+	ffm->s = s;
+	ffm->output->pb = s;
+
+	return 0;
+fail:
+	av_freep(&buffer);
+	return AVERROR(ENOMEM);
+}
+
 static inline int open_output_file(struct ffmpeg_mux *ffm)
 {
 #if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(59, 0, 100)
@@ -576,15 +702,32 @@ static inline int open_output_file(struct ffmpeg_mux *ffm)
 	const AVOutputFormat *format = ffm->output->oformat;
 #endif
 	int ret;
-
+	/* for srt and rist protocols, we handle manually the avio opening. */
 	if ((format->flags & AVFMT_NOFILE) == 0) {
-		ret = avio_open(&ffm->output->pb, ffm->params.file,
-				AVIO_FLAG_WRITE);
+		if (is_rist(ffm)) {
+			ret = connect_mpegts_url(ffm, true);
+		} else if (is_srt(ffm)) {
+			ret = connect_mpegts_url(ffm, false);
+		} else {
+			ret = avio_open(&ffm->output->pb, ffm->params.file,
+					AVIO_FLAG_WRITE);
+		}
+
 		if (ret < 0) {
 			fprintf(stderr, "Couldn't open '%s', %s\n",
 				ffm->params.printable_file.array,
 				av_err2str(ret));
 			return FFM_ERROR;
+		}
+		if (is_rist(ffm) || is_srt(ffm)) {
+			bool rist = is_rist(ffm);
+			ret = allocate_custom_aviocontext(ffm, rist);
+			if (ret < 0) {
+				fprintf(stderr,
+					"Couldn't allocate custom avio_context for rist or srt'%s', %s\n",
+					ffm->params.file, av_err2str(ret));
+				return FFM_ERROR;
+			}
 		}
 	}
 
@@ -622,12 +765,6 @@ static inline int open_output_file(struct ffmpeg_mux *ffm)
 
 	return FFM_SUCCESS;
 }
-
-#define SRT_PROTO "srt"
-#define UDP_PROTO "udp"
-#define TCP_PROTO "tcp"
-#define HTTP_PROTO "http"
-#define RIST_PROTO "rist"
 
 static bool ffmpeg_mux_is_network(struct ffmpeg_mux *ffm)
 {
