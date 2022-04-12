@@ -39,14 +39,14 @@ struct nv_greenscreen_data {
 	CUstream stream; // cuda stream
 	int mode;        // 0 = quality, 1 = performance
 	bool images_allocated;
-	NvCVImage *src_img;       // src img in obs format on CPU
-	NvCVImage *GPU_src_img;   // src img in obs format on GPU
-	NvCVImage *BGR_src_img;   // src img in BGR on GPU
-	NvCVImage *A_dst_img;     // mask == output by nv greenscreen fx
-	NvCVImage *A_CPU_dst_img; // mask on CPU
-	enum video_format current_format;  // format of obs frame
-	enum video_format new_format;      // new format of obs frame
-	bool tick_flag;                    // only render at new frames
+	NvCVImage *src_img;               // src img in obs format on CPU
+	NvCVImage *GPU_src_img;           // src img in obs format on GPU
+	NvCVImage *BGR_src_img;           // src img in BGR on GPU
+	NvCVImage *A_dst_img;             // mask == output by nv greenscreen fx
+	NvCVImage *A_CPU_dst_img;         // mask on CPU
+	enum video_format current_format; // format of obs frame
+	enum video_format new_format;     // new format of obs frame
+	bool tick_flag;                   // only render at new frames
 
 	/* alpha mask effect */
 	gs_effect_t *effect;
