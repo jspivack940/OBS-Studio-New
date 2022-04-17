@@ -5,6 +5,7 @@
 #include <d3d11.h>
 #include <d3d11_1.h>
 #include "nvvfx-load.h"
+
 /* -------------------------------------------------------- */
 
 #define do_log(level, format, ...)                            \
@@ -192,9 +193,10 @@ fail:
 	error("Error during allocation of images, error %i", vfxErr);
 	nv_greenscreen_filter_destroy(filter);
 }
-
+static const char *render = "greenscreen_render";
 static bool process_texture_gr(struct nv_greenscreen_data *filter)
 {
+	profile_start(render);
 	gs_texrender_t *render = filter->render;
 	NvCV_Status vfxErr;
 
@@ -289,11 +291,12 @@ static bool process_texture_gr(struct nv_greenscreen_data *filter)
 		goto fail;
 	}
 	cudaError_t CUDARTAPI cudaErr = cudaStreamSynchronize(filter->stream);
-
+	profile_end(render);
 	return true;
 fail:
 	nv_greenscreen_filter_destroy(filter);
 	return false;
+
 }
 
 static void *nv_greenscreen_filter_create(obs_data_t *settings,
@@ -430,9 +433,10 @@ static void nv_greenscreen_filter_tick(void *data, float t)
 
 	filter->processed_frame = false;
 }
-
+static const char *draw = "greenscreen_draw";
 static void draw_gr(struct nv_greenscreen_data *filter)
 {
+	profile_start(draw);
 
 	/* Render alpha mask */
 	if (!obs_source_process_filter_begin(filter->context, GS_RGBA_UNORM,
@@ -445,10 +449,12 @@ static void draw_gr(struct nv_greenscreen_data *filter)
 		gs_draw_sprite(NULL, 0, filter->width, filter->height);
 	}
 	obs_source_process_filter_end(filter->context, filter->effect, 0, 0);
+	profile_end(draw);
 }
-
+static const char *check_name = "greenscreen";
 static void nv_greenscreen_filter_render(void *data, gs_effect_t *effect)
 {
+	profile_start(check_name);
 	struct nv_greenscreen_data *filter = (struct nv_greenscreen_data *)data;
 	obs_source_t *target = obs_filter_get_target(filter->context);
 	obs_source_t *parent = obs_filter_get_parent(filter->context);
@@ -510,6 +516,7 @@ static void nv_greenscreen_filter_render(void *data, gs_effect_t *effect)
 		filter->processed_frame = true;
 	}
 	UNUSED_PARAMETER(effect);
+	profile_end(check_name);
 }
 
 bool load_nvvfx(void)
