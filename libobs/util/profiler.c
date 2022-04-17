@@ -9,7 +9,9 @@
 #include <math.h>
 
 #include <zlib.h>
-
+#ifdef USE_NVTX // Annotations for Nvidia Nsight Systems
+#include <nvtx3/nvToolsExt.h>
+#endif
 //#define TRACK_OVERHEAD
 
 struct profiler_snapshot {
@@ -389,6 +391,9 @@ void profile_start(const char *name)
 	}
 
 	thread_context = call;
+#ifdef USE_NVTX
+	nvtxRangePushA(name);
+#endif
 	call->start_time = os_gettime_ns();
 }
 
@@ -429,6 +434,9 @@ void profile_end(const char *name)
 	thread_context = call->parent;
 
 	call->end_time = end;
+#ifdef USE_NVTX
+	nvtxRangePop();
+#endif
 #ifdef TRACK_OVERHEAD
 	call->overhead_end = os_gettime_ns();
 #endif
