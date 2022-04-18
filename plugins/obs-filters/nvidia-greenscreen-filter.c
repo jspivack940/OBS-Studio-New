@@ -27,7 +27,7 @@
 #define S_MODE_QUALITY 0
 #define S_MODE_PERF 1
 #define S_THRESHOLDFX "threshold"
-#define S_THRESHOLDFX_DEFAULT 0.9
+#define S_THRESHOLDFX_DEFAULT 1.0
 
 #define MT_ obs_module_text
 #define TEXT_MODE MT_("Greenscreen.Mode")
@@ -39,10 +39,10 @@ bool nvvfx_loaded = false;
 struct nv_greenscreen_data {
 	obs_source_t *context;
 	bool images_allocated;
+	bool initial_render;
 	bool processing_stop;
 	bool processed_frame;
 	bool target_valid;
-	int count;
 
 	/* RTX SDK vars*/
 	NvVFX_Handle handle;
@@ -136,20 +136,27 @@ static void init_images_gr(struct nv_greenscreen_data *filter)
 	if (filter->alpha_texture == NULL) {
 		error("Alpha texture couldn't be created");
 	}
-	/* 2. create texrender */
+	struct ID3D11Texture2D *d11texture =
+		(struct ID3D11Texture2D *)gs_texture_get_obj(
+			filter->alpha_texture);
+	obs_leave_graphics();
+	/* 2. Create NvCVImage which will hold final alpha texture. */
+	vfxErr = NvCVImage_Create(width, height, NVCV_A, NVCV_U8, NVCV_CHUNKY,
+				  NVCV_GPU, 1, &filter->dst_img);
+
+	vfxErr = NvCVImage_InitFromD3D11Texture(filter->dst_img, d11texture);
+	if (vfxErr != NVCV_SUCCESS) {
+		error("Error passing dst ID3D11Texture to NvCVImage, error %i",
+		      vfxErr);
+	}
+	/* 3. create texrender */
+	obs_enter_graphics();
 	if (filter->render)
 		gs_texrender_destroy(filter->render);
 	filter->render = gs_texrender_create(GS_RGBA_UNORM, GS_ZS_NONE);
 	obs_leave_graphics();
 
-	/* 3. Create source NvCVImage. Allocation not required because we'll
-	   pass the texture buffer */
-	vfxErr = NvCVImage_Create(width, height, NVCV_RGBA, NVCV_U8,
-				  NVCV_CHUNKY, NVCV_GPU, 1, &filter->src_img);
-	if (vfxErr != NVCV_SUCCESS) {
-		goto fail;
-	}
-	/* 4. Create and allocate BGR NvCVImage. */
+	/* 4. Create and allocate BGR NvCVImage (fx src). */
 	vfxErr = NvCVImage_Create(width, height, NVCV_BGR, NVCV_U8, NVCV_CHUNKY,
 				  NVCV_GPU, 1, &filter->BGR_src_img);
 	vfxErr = NvCVImage_Alloc(filter->BGR_src_img, width, height, NVCV_BGR,
@@ -157,7 +164,7 @@ static void init_images_gr(struct nv_greenscreen_data *filter)
 	if (vfxErr != NVCV_SUCCESS) {
 		goto fail;
 	}
-	/* 5. Create and allocate Alpha NvCVimage on GPU. */
+	/* 5. Create and allocate Alpha NvCVimage (fx dst). */
 	vfxErr = NvCVImage_Create(width, height, NVCV_A, NVCV_U8, NVCV_CHUNKY,
 				  NVCV_GPU, 1, &filter->A_dst_img);
 	vfxErr = NvCVImage_Alloc(filter->A_dst_img, width, height, NVCV_A,
@@ -166,11 +173,7 @@ static void init_images_gr(struct nv_greenscreen_data *filter)
 		goto fail;
 	}
 
-	/* 6.' Create NvCVImage which will hold final texture. */
-	vfxErr = NvCVImage_Create(width, height, NVCV_A, NVCV_U8, NVCV_CHUNKY,
-				  NVCV_GPU, 1, &filter->dst_img);
-
-	/* 6.'' Create stage NvCVImage which will be used as buffer for transfer */
+	/* 6. Create stage NvCVImage which will be used as buffer for transfer */
 	vfxErr = NvCVImage_Create(width, height, NVCV_RGBA, NVCV_U8,
 				  NVCV_PLANAR, NVCV_GPU, 1, &filter->stage);
 	vfxErr = NvCVImage_Alloc(filter->stage, width, height, NVCV_RGBA,
@@ -193,6 +196,7 @@ fail:
 	error("Error during allocation of images, error %i", vfxErr);
 	nv_greenscreen_filter_destroy(filter);
 }
+
 static const char *render = "greenscreen_render";
 static bool process_texture_gr(struct nv_greenscreen_data *filter)
 {
@@ -200,29 +204,6 @@ static bool process_texture_gr(struct nv_greenscreen_data *filter)
 	gs_texrender_t *render = filter->render;
 	NvCV_Status vfxErr;
 
-	/* 1. Retrieve d3d11texture2d from texrender */
-	obs_enter_graphics();
-	gs_texture_t *texture = gs_texrender_get_texture(render);
-	enum gs_color_format color = gs_texture_get_color_format(texture);
-	filter->src_texture = texture;
-	struct ID3D11Texture2D *d11texture =
-		(struct ID3D11Texture2D *)gs_texture_get_obj(texture);
-	obs_leave_graphics();
-	if (!d11texture) {
-		error("Couldn't retrieve d3d11texture2d.");
-		return false;
-	}
-	/* 2. Init NvCVImage with ID3D11Texure2D & map before transfer */
-	vfxErr = NvCVImage_Dealloc(filter->src_img);
-	vfxErr = NvCVImage_InitFromD3D11Texture(filter->src_img, d11texture);
-	if (vfxErr != NVCV_SUCCESS) {
-		error("Error passing ID3D11Texture to NvCVImage, error %i",
-		      vfxErr);
-		pthread_mutex_lock(&filter->nvvfx_mutex);
-		init_images_gr(filter); // non fatal error
-		pthread_mutex_unlock(&filter->nvvfx_mutex);
-		return false;
-	}
 	vfxErr = NvCVImage_MapResource(filter->src_img, filter->stream);
 	if (vfxErr != NVCV_SUCCESS) {
 		error("Error mapping resource for source texture, error %i",
@@ -254,22 +235,6 @@ static bool process_texture_gr(struct nv_greenscreen_data *filter)
 		goto fail;
 	}
 
-	/* 5. Transfer to texture */
-	obs_enter_graphics();
-	struct ID3D11Texture2D *d11texture2 =
-		(struct ID3D11Texture2D *)gs_texture_get_obj(
-			filter->alpha_texture);
-	obs_leave_graphics();
-	vfxErr = NvCVImage_Dealloc(filter->dst_img);
-	vfxErr = NvCVImage_InitFromD3D11Texture(filter->dst_img, d11texture2);
-	if (vfxErr != NVCV_SUCCESS) {
-		error("Error passing final ID3D11Texture to NvCVImage, error %i",
-		      vfxErr);
-		pthread_mutex_lock(&filter->nvvfx_mutex);
-		init_images_gr(filter); // non fatal error
-		pthread_mutex_unlock(&filter->nvvfx_mutex);
-		return false;
-	}
 	vfxErr = NvCVImage_MapResource(filter->dst_img, filter->stream);
 	if (vfxErr != NVCV_SUCCESS) {
 		error("Error mapping resource for dst texture, error %i",
@@ -290,13 +255,12 @@ static bool process_texture_gr(struct nv_greenscreen_data *filter)
 		      vfxErr);
 		goto fail;
 	}
-	cudaError_t CUDARTAPI cudaErr = cudaStreamSynchronize(filter->stream);
+//	cudaError_t CUDARTAPI cudaErr = cudaStreamSynchronize(filter->stream);
 	profile_end(render);
 	return true;
 fail:
 	nv_greenscreen_filter_destroy(filter);
 	return false;
-
 }
 
 static void *nv_greenscreen_filter_create(obs_data_t *settings,
@@ -307,14 +271,12 @@ static void *nv_greenscreen_filter_create(obs_data_t *settings,
 	if (!nvvfx_loaded)
 		nv_greenscreen_filter_destroy(filter);
 	NvCV_Status vfxErr;
-	filter->mode =
-		-1; // triggers initialization since it's not a valid value
+	filter->mode = -1; // should be 0 or 1; -1 triggers an update
 	filter->images_allocated = false;
-	filter->processed_frame =
-		true; // processing starts when tick says processed_frame is false
+	filter->processed_frame = true; // start processing when false
 	filter->width = 0;
 	filter->height = 0;
-	filter->count = 0;
+	filter->initial_render = false;
 	filter->processing_stop = false;
 
 	/* Create FX */
@@ -428,8 +390,10 @@ static void nv_greenscreen_filter_tick(void *data, float t)
 		filter->width = cx;
 		filter->height = cy;
 	}
-	if (!filter->images_allocated)
+	if (!filter->images_allocated) {
 		init_images_gr(filter);
+		filter->initial_render = 0;
+	}
 
 	filter->processed_frame = false;
 }
@@ -455,6 +419,7 @@ static const char *check_name = "greenscreen";
 static void nv_greenscreen_filter_render(void *data, gs_effect_t *effect)
 {
 	profile_start(check_name);
+	NvCV_Status vfxErr;
 	struct nv_greenscreen_data *filter = (struct nv_greenscreen_data *)data;
 	obs_source_t *target = obs_filter_get_target(filter->context);
 	obs_source_t *parent = obs_filter_get_parent(filter->context);
@@ -468,11 +433,6 @@ static void nv_greenscreen_filter_render(void *data, gs_effect_t *effect)
 	    filter->processed_frame) {
 		obs_source_skip_video_filter(filter->context);
 		return;
-	}
-	// draw first alpha mask
-	if (filter->count >= 1) {
-		if (process_texture_gr(filter))
-			draw_gr(filter);
 	}
 
 	if (!filter->processed_frame) {
@@ -506,14 +466,48 @@ static void nv_greenscreen_filter_render(void *data, gs_effect_t *effect)
 			gs_texrender_end(render);
 		}
 		gs_blend_state_pop();
+		/* 2. Initialize src_texture; only at startup or reset */
+		if (!filter->initial_render) {
+			obs_enter_graphics();
+			filter->src_texture =
+				gs_texrender_get_texture(filter->render);
+			struct ID3D11Texture2D *d11texture2 =
+				(struct ID3D11Texture2D *)gs_texture_get_obj(
+					filter->src_texture);
+			obs_leave_graphics();
 
-		if (filter->count <= 1)
-			filter->count += 1;
-		if (filter->count == 1) {
+			if (!d11texture2) {
+				error("Couldn't retrieve d3d11texture2d.");
+				return false;
+			}
+			vfxErr = NvCVImage_Create(filter->width, filter->height,
+						  NVCV_RGBA, NVCV_U8,
+						  NVCV_CHUNKY, NVCV_GPU, 1,
+						  &filter->src_img);
+			if (vfxErr != NVCV_SUCCESS) {
+				error("Error creating src img, error %i",
+				      vfxErr);
+				nv_greenscreen_filter_destroy(filter);
+			}
+			vfxErr = NvCVImage_InitFromD3D11Texture(filter->src_img,
+								d11texture2);
+			if (vfxErr != NVCV_SUCCESS) {
+				error("Error passing src ID3D11Texture to img, error %i",
+				      vfxErr);
+				nv_greenscreen_filter_destroy(filter);
+			}
+			filter->initial_render = true;
+		}
+
+		if (filter->initial_render && filter->images_allocated) {
+			if (process_texture_gr(filter)) {
+				draw_gr(filter);
+				filter->processed_frame = true;
+			}
+		} else {
 			obs_source_skip_video_filter(filter->context);
 			return;
 		}
-		filter->processed_frame = true;
 	}
 	UNUSED_PARAMETER(effect);
 	profile_end(check_name);
