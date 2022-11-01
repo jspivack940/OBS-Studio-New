@@ -82,6 +82,17 @@ static const char *get_codec_name(enum codec_type type)
 
 	return "Unknown";
 }
+enum nvenc_gen {
+	NO_NVENC,
+	NV_KEPLER,
+	NV_MAXWELL_GEN1,
+	NV_MAXWELL_GEN2,
+	NV_PASCAL,
+	NV_VOLTA,
+	NV_TURING,
+	NV_AMPERE,
+	NV_ADA
+};
 
 struct nvenc_data {
 	obs_encoder_t *encoder;
@@ -122,6 +133,10 @@ struct nvenc_data {
 
 	uint8_t *sei;
 	size_t sei_size;
+
+	/* GPU info */
+	NvAPI_ShortString name;
+	enum nvenc_gen gen;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -1056,6 +1071,80 @@ static bool init_encoder(struct nvenc_data *enc, enum codec_type codec,
 	return true;
 }
 
+extern bool is_blacklisted(const int device_id);
+
+void get_nv_gpu_info(struct nvenc_data *enc)
+{
+	enc->gen = NO_NVENC;
+
+	/* Retrieve GPU info, name, nvenc gen */
+	if (NvAPI_Initialize() != NVAPI_OK)
+		goto fail;
+	NvU32 cnt;
+	NvPhysicalGpuHandle phys;
+	if (NvAPI_EnumPhysicalGPUs(&phys, &cnt) != NVAPI_OK)
+		goto fail;
+	if (cnt == 1) { // we dont deal with SLI
+		if (NvAPI_GPU_GetFullName(phys, enc->name) != NVAPI_OK)
+			goto fail;
+	}
+
+	/* retrieve device ID & check if it's blacklisted */
+	NvU32 pDeviceId;
+	NvU32 pSubSystemId;
+	NvU32 pRevisionId;
+	NvU32 pExtDeviceId;
+	if (NvAPI_GPU_GetPCIIdentifiers(phys, &pDeviceId, &pSubSystemId,
+					&pRevisionId,
+					&pExtDeviceId) != NVAPI_OK)
+		goto fail;
+	if (is_blacklisted(pDeviceId)) {
+		warn("gpu %s has no nvenc chip.", enc->name);
+		goto fail;
+	}
+	/* retrieve architecture */
+	NV_GPU_ARCH_INFO pGpuArchInfo = {NV_GPU_ARCH_INFO_VER};
+	if (NvAPI_GPU_GetArchInfo(phys, &pGpuArchInfo) != NVAPI_OK)
+		goto fail;
+
+	switch (pGpuArchInfo.architecture) {
+	case NV_GPU_ARCHITECTURE_GK100:
+	case NV_GPU_ARCHITECTURE_GK110:
+		enc->gen = NV_KEPLER;
+	case NV_GPU_ARCHITECTURE_GM000: // check if this corresponds to GM1xx gpus
+		enc->gen = NV_MAXWELL_GEN1;
+	case NV_GPU_ARCHITECTURE_GM200:
+		enc->gen = NV_MAXWELL_GEN2;
+	case NV_GPU_ARCHITECTURE_GP100:
+		if (pGpuArchInfo.implementation ==
+		    NV_GPU_ARCH_IMPLEMENTATION_GP108)
+			enc->gen = NO_NVENC;
+		else
+			enc->gen = NV_PASCAL;
+	case NV_GPU_ARCHITECTURE_GV100:
+		enc->gen = NV_VOLTA;
+	case NV_GPU_ARCHITECTURE_TU100:
+		if (pGpuArchInfo.implementation ==
+		    NV_GPU_ARCH_IMPLEMENTATION_TU117)
+			enc->gen = NV_VOLTA;
+		else
+			enc->gen = NV_TURING;
+	case NV_GPU_ARCHITECTURE_GA100:
+		if (pGpuArchInfo.implementation ==
+		    NV_GPU_ARCH_IMPLEMENTATION_GA100)
+			enc->gen = NO_NVENC;
+		else
+			enc->gen = NV_AMPERE;
+	case NV_GPU_ARCHITECTURE_AD100:
+		enc->gen = NV_ADA;
+	default:
+		enc->gen = NO_NVENC;
+	}
+
+fail:
+	NvAPI_Unload();
+}
+
 static void *nvenc_create_internal(enum codec_type codec, obs_data_t *settings,
 				   obs_encoder_t *encoder)
 {
@@ -1099,6 +1188,7 @@ static void *nvenc_create_internal(enum codec_type codec, obs_data_t *settings,
 	if (!init_textures(enc)) {
 		goto fail;
 	}
+	get_nv_gpu_info(enc);
 
 #ifdef ENABLE_HEVC
 	enc->codec = codec;

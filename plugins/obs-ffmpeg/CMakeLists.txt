@@ -103,7 +103,9 @@ if(OS_WINDOWS)
   if(MSVC)
     target_link_libraries(obs-ffmpeg PRIVATE OBS::w32-pthreads)
   endif()
-
+  add_library(nvapi64 STATIC IMPORTED)
+  set_target_properties(nvapi64 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/external/lib/nvapi64.lib)
+  target_link_libraries(obs-ffmpeg PRIVATE nvapi64)
   set(MODULE_DESCRIPTION "OBS FFmpeg module")
   configure_file(${CMAKE_SOURCE_DIR}/cmake/bundle/windows/obs-module.rc.in
                  obs-ffmpeg.rc)

@@ -99,7 +99,7 @@ static const int blacklisted_adapters[] = {
 static const size_t num_blacklisted =
 	sizeof(blacklisted_adapters) / sizeof(blacklisted_adapters[0]);
 
-static bool is_blacklisted(const int device_id)
+bool is_blacklisted(const int device_id)
 {
 	for (size_t i = 0; i < num_blacklisted; i++) {
 		const int blacklisted_adapter = blacklisted_adapters[i];
