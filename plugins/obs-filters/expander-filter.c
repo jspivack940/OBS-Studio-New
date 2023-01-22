@@ -359,7 +359,7 @@ static inline void process_sample(size_t idx, float *samples, float *env_buf,
 	float diff = threshold - env_db;
 
 	if (is_upwcomp && env_db <= -60.0f)
-		diff = 0.0f;
+		diff = threshold + 60.0f;
 
 	/* Knee with width hard-coded to 10 dB */
 	float knee = 10.0f;
