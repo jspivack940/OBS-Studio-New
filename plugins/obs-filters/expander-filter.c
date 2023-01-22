@@ -382,12 +382,12 @@ static inline void process_sample(size_t idx, float *samples, float *env_buf,
 		gain = diff > 0.0f ? fmaxf(slope * diff, -60.0f) : 0.0f;
 	}
 
-	float prev_gain = gain_db[idx - 1];
+	float prev_gain = idx > 0 ? gain_db[idx - 1] : channel_gain;
 
 	/* --------------------------------- */
 	/* ballistics (attack/release)       */
 
-	if (idx > 0) {
+	if (!is_upwcomp) {
 		if (gain > prev_gain)
 			gain_db[idx] = attack_gain * prev_gain +
 				       inv_attack_gain * gain;
@@ -395,11 +395,11 @@ static inline void process_sample(size_t idx, float *samples, float *env_buf,
 			gain_db[idx] = release_gain * prev_gain +
 				       inv_release_gain * gain;
 	} else {
-		if (gain > channel_gain)
-			gain_db[idx] = attack_gain * channel_gain +
+		if (gain < prev_gain)
+			gain_db[idx] = attack_gain * prev_gain +
 				       inv_attack_gain * gain;
 		else
-			gain_db[idx] = release_gain * channel_gain +
+			gain_db[idx] = release_gain * prev_gain +
 				       inv_release_gain * gain;
 	}
 
