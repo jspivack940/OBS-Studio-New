@@ -234,8 +234,10 @@ bool WHIPOutput::Connect()
 		return false;
 	}
 
-	endpoint_url = obs_service_get_url(service);
-	bearer_token = obs_data_get_string(service_settings, "bearer_token");
+	endpoint_url = obs_service_get_connect_info(
+		service, OBS_SERVICE_CONNECT_INFO_SERVER_URL);
+	bearer_token = obs_service_get_connect_info(
+		service, OBS_SERVICE_CONNECT_INFO_BEARER_TOKEN);
 
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "Content-Type: application/sdp");
@@ -441,7 +443,7 @@ void WHIPOutput::Send(void *data, uintptr_t size, uint64_t duration,
 		track->send(sample);
 		total_bytes_sent += sample.size();
 	} catch (const std::exception &e) {
-		// TODO: Emit output failure
+		do_log(LOG_ERROR, "error: %s ", e.what());
 	}
 }
 
@@ -481,6 +483,6 @@ void register_whip_output()
 	};
 	info.encoded_video_codecs = "h264";
 	info.encoded_audio_codecs = "opus";
-
+	info.protocols = "WHIP";
 	obs_register_output(&info);
 }

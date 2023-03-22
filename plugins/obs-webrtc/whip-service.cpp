@@ -2,14 +2,19 @@
 
 #include "whip-service.h"
 
-WHIPService::WHIPService(obs_data_t *settings, obs_service_t *) : server()
+WHIPService::WHIPService(obs_data_t *settings, obs_service_t *)
+	: server(), bearer_token()
 {
+	video_codecs[0] = "h264";
+	audio_codecs[0] = "opus";
+
 	Update(settings);
 }
 
 void WHIPService::Update(obs_data_t *settings)
 {
 	server = obs_data_get_string(settings, "server");
+	bearer_token = obs_data_get_string(settings, "bearer_token");
 }
 
 obs_properties_t *WHIPService::Properties()
@@ -35,6 +40,31 @@ void WHIPService::ApplyEncoderSettings(obs_data_t *video_settings, obs_data_t *)
 	}
 }
 
+const char *WHIPService::GetConnectInfo(void *data, uint32_t type)
+{
+	switch ((enum obs_service_connect_info)type) {
+	case OBS_SERVICE_CONNECT_INFO_SERVER_URL:
+		return static_cast<WHIPService *>(data)->server.c_str();
+	case OBS_SERVICE_CONNECT_INFO_BEARER_TOKEN:
+		return static_cast<WHIPService *>(data)->bearer_token.c_str();
+	case OBS_SERVICE_CONNECT_INFO_STREAM_ID:
+	case OBS_SERVICE_CONNECT_INFO_USERNAME:
+	case OBS_SERVICE_CONNECT_INFO_PASSWORD:
+	case OBS_SERVICE_CONNECT_INFO_ENCRYPT_PASSPHRASE:
+		return NULL;
+	}
+
+	return NULL;
+}
+
+bool WHIPService::CanTryToConnect(void *data)
+{
+	WHIPService *service = static_cast<WHIPService *>(data);
+
+	return (service->server.c_str() != NULL &&
+		service->server.c_str()[0] != '\0');
+}
+
 void register_whip_service()
 {
 	struct obs_service_info info = {};
@@ -56,16 +86,31 @@ void register_whip_service()
 	info.get_properties = [](void *) -> obs_properties_t * {
 		return WHIPService::Properties();
 	};
+	info.get_protocol = [](void *) -> const char * { return "WHIP"; };
 	info.get_url = [](void *priv_data) -> const char * {
 		return static_cast<WHIPService *>(priv_data)->server.c_str();
 	};
 	info.get_output_type = [](void *) -> const char * {
 		return "whip_output";
 	};
+	info.get_connect_info = [](void *data, uint32_t type) -> const char * {
+		return WHIPService::GetConnectInfo(data, type);
+	};
 	info.apply_encoder_settings = [](void *, obs_data_t *video_settings,
 					 obs_data_t *audio_settings) {
 		WHIPService::ApplyEncoderSettings(video_settings,
 						  audio_settings);
+	};
+	info.get_supported_video_codecs = [](void *data) -> const char ** {
+		return (const char **)static_cast<WHIPService *>(data)
+			->video_codecs;
+	};
+	info.get_supported_audio_codecs = [](void *data) -> const char ** {
+		return (const char **)static_cast<WHIPService *>(data)
+			->audio_codecs;
+	};
+	info.can_try_to_connect = [](void *data) -> bool {
+		return WHIPService::CanTryToConnect(data);
 	};
 
 	obs_register_service(&info);
