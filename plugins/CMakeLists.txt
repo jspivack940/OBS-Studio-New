@@ -92,6 +92,7 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
     add_subdirectory(win-dshow)
     add_subdirectory(win-wasapi)
   endif()
+  add_subdirectory(obs-webrtc)
   return()
 endif()
 
