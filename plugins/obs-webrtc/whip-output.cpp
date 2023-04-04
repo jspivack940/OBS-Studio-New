@@ -8,18 +8,22 @@
 
 #include "whip-output.h"
 
-#define do_log(level, format, ...)                              \
+#define do_log(level, output, format, ...)                      \
 	blog(level, "[obs-webrtc] [whip_output: '%s'] " format, \
 	     obs_output_get_name(output), ##__VA_ARGS__)
 
-const rtc::string msid = "obs-studio";
+const char *msid = "obs-studio";
 
 const uint32_t audio_ssrc = 5002;
-const rtc::string audio_cname = "audio";
+const char *audio_cname = "audio";
+const char *audio_mid = "0";
+const uint32_t audio_clockrate = 48000;
 const uint8_t audio_payload_type = 111;
 
 const uint32_t video_ssrc = 5000;
-const rtc::string video_cname = "video";
+const char *video_cname = "video";
+const char *video_mid = "1";
+const uint32_t video_clockrate = 90000;
 const uint8_t video_payload_type = 96;
 
 static std::string trim_string(const std::string &source)
@@ -70,12 +74,10 @@ WHIPOutput::WHIPOutput(obs_data_t *, obs_output_t *output)
 	  running(false),
 	  start_stop_mutex(),
 	  start_stop_thread(),
-	  peer_connection(nullptr),
+	  peer_connection(-1),
 	  total_bytes_sent(0),
-	  audio_track(nullptr),
-	  video_track(nullptr),
-	  audio_sr_reporter(nullptr),
-	  video_sr_reporter(nullptr),
+	  audio_track(-1),
+	  video_track(-1),
 	  last_audio_timestamp(0),
 	  last_video_timestamp(0)
 {
@@ -131,13 +133,11 @@ void WHIPOutput::Data(struct encoder_packet *packet)
 
 	if (packet->type == OBS_ENCODER_AUDIO) {
 		int64_t duration = packet->dts_usec - last_audio_timestamp;
-		Send(packet->data, packet->size, duration, audio_track,
-		     audio_sr_reporter);
+		Send(packet->data, packet->size, duration, audio_track);
 		last_audio_timestamp = packet->dts_usec;
 	} else if (packet->type == OBS_ENCODER_VIDEO) {
 		int64_t duration = packet->dts_usec - last_video_timestamp;
-		Send(packet->data, packet->size, duration, video_track,
-		     video_sr_reporter);
+		Send(packet->data, packet->size, duration, video_track);
 		last_video_timestamp = packet->dts_usec;
 	}
 }
@@ -149,65 +149,100 @@ uint64_t WHIPOutput::TotalBytes()
 
 void WHIPOutput::ConfigureAudioTrack()
 {
-	rtc::Description::Audio audio_media(
-		audio_cname, rtc::Description::Direction::SendOnly);
-	audio_media.addOpusCodec(audio_payload_type);
-	audio_media.addSSRC(audio_ssrc, audio_cname, msid, audio_cname);
-	audio_track = peer_connection->addTrack(audio_media);
+	rtcTrackInit track_init = {
+		RTC_DIRECTION_SENDONLY,
+		RTC_CODEC_OPUS,
+		audio_payload_type,
+		audio_ssrc,
+		audio_mid,
+		NULL,
+		msid,
+		NULL,
+	};
 
-	auto rtp_config = std::make_shared<rtc::RtpPacketizationConfig>(
-		audio_ssrc, audio_cname, audio_payload_type,
-		rtc::OpusRtpPacketizer::defaultClockRate);
-	auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(rtp_config);
-	audio_sr_reporter = std::make_shared<rtc::RtcpSrReporter>(rtp_config);
-	auto nack_responder = std::make_shared<rtc::RtcpNackResponder>();
+	rtcPacketizationHandlerInit packetizer_init = {audio_ssrc,
+						       audio_cname,
+						       audio_payload_type,
+						       audio_clockrate,
+						       0,
+						       0,
+						       RTC_NAL_SEPARATOR_LENGTH,
+						       0};
 
-	auto opus_handler =
-		std::make_shared<rtc::OpusPacketizationHandler>(packetizer);
-	opus_handler->addToChain(audio_sr_reporter);
-	opus_handler->addToChain(nack_responder);
-	audio_track->setMediaHandler(opus_handler);
+	audio_track = rtcAddTrackEx(peer_connection, &track_init);
+	rtcSetOpusPacketizationHandler(audio_track, &packetizer_init);
+	rtcChainRtcpSrReporter(audio_track);
+	rtcChainRtcpNackResponder(audio_track, 1000);
 }
 
 void WHIPOutput::ConfigureVideoTrack()
 {
-	rtc::Description::Video video_media(
-		video_cname, rtc::Description::Direction::SendOnly);
-	video_media.addH264Codec(video_payload_type);
-	video_media.addSSRC(video_ssrc, video_cname, msid, video_cname);
-	video_track = peer_connection->addTrack(video_media);
+	rtcTrackInit track_init = {
+		RTC_DIRECTION_SENDONLY,
+		RTC_CODEC_H264,
+		video_payload_type,
+		video_ssrc,
+		video_mid,
+		NULL,
+		msid,
+		NULL,
+	};
 
-	auto rtp_config = std::make_shared<rtc::RtpPacketizationConfig>(
-		video_ssrc, video_cname, video_payload_type,
-		rtc::H264RtpPacketizer::defaultClockRate);
-	auto packetizer = std::make_shared<rtc::H264RtpPacketizer>(
-		rtc::H264RtpPacketizer::Separator::StartSequence, rtp_config);
-	video_sr_reporter = std::make_shared<rtc::RtcpSrReporter>(rtp_config);
-	auto nack_responder = std::make_shared<rtc::RtcpNackResponder>();
+	rtcPacketizationHandlerInit packetizer_init = {
+		video_ssrc,
+		video_cname,
+		video_payload_type,
+		video_clockrate,
+		0,
+		0,
+		RTC_NAL_SEPARATOR_START_SEQUENCE,
+		0};
 
-	auto h264_handler =
-		std::make_shared<rtc::H264PacketizationHandler>(packetizer);
-	h264_handler->addToChain(video_sr_reporter);
-	h264_handler->addToChain(nack_responder);
-	video_track->setMediaHandler(h264_handler);
+	video_track = rtcAddTrackEx(peer_connection, &track_init);
+	rtcSetH264PacketizationHandler(video_track, &packetizer_init);
+	rtcChainRtcpSrReporter(video_track);
+	rtcChainRtcpNackResponder(video_track, 1000);
 }
 
 bool WHIPOutput::Setup()
 {
-	peer_connection = std::make_unique<rtc::PeerConnection>();
-	peer_connection->onStateChange([&](rtc::PeerConnection::State state) {
-		std::ostringstream state_stream;
-		state_stream << state;
-		do_log(LOG_INFO, "PeerConnection state is now: %s",
-		       state_stream.str().c_str());
+	rtcConfiguration config;
+	memset(&config, 0, sizeof(config));
+
+	peer_connection = rtcCreatePeerConnection(&config);
+	rtcSetUserPointer(peer_connection, this);
+
+	rtcSetStateChangeCallback(peer_connection, [](int, rtcState state,
+						      void *ptr) {
+		auto whipOutput = static_cast<WHIPOutput *>(ptr);
 		switch (state) {
-		case rtc::PeerConnection::State::Disconnected:
-			obs_output_signal_stop(output, OBS_OUTPUT_DISCONNECTED);
+		case RTC_NEW:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: New");
 			break;
-		case rtc::PeerConnection::State::Failed:
-			obs_output_signal_stop(output, OBS_OUTPUT_ERROR);
+		case RTC_CONNECTING:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: Connecting");
 			break;
-		default:
+		case RTC_CONNECTED:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: Connected");
+			break;
+		case RTC_DISCONNECTED:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: Disconnected");
+			obs_output_signal_stop(whipOutput->output,
+					       OBS_OUTPUT_DISCONNECTED);
+			break;
+		case RTC_FAILED:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: Failed");
+			obs_output_signal_stop(whipOutput->output,
+					       OBS_OUTPUT_ERROR);
+			break;
+		case RTC_CLOSED:
+			do_log(LOG_INFO, whipOutput->output,
+			       "PeerConnection state is now: Closed");
 			break;
 		}
 	});
@@ -215,7 +250,7 @@ bool WHIPOutput::Setup()
 	ConfigureAudioTrack();
 	ConfigureVideoTrack();
 
-	peer_connection->setLocalDescription();
+	rtcSetLocalDescription(peer_connection, "offer");
 
 	return true;
 }
@@ -250,8 +285,8 @@ bool WHIPOutput::Connect()
 
 	std::string read_buffer;
 	std::string location_header;
-	auto offer = peer_connection->localDescription();
-	auto offer_sdp = std::string(offer->generateSdp());
+	char offer_sdp[4096] = {0};
+	rtcGetLocalDescription(peer_connection, offer_sdp, sizeof(offer_sdp));
 
 	CURL *c = curl_easy_init();
 	curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_writefunction);
@@ -261,7 +296,7 @@ bool WHIPOutput::Connect()
 	curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(c, CURLOPT_URL, endpoint_url.c_str());
 	curl_easy_setopt(c, CURLOPT_POST, 1L);
-	curl_easy_setopt(c, CURLOPT_COPYPOSTFIELDS, offer_sdp.c_str());
+	curl_easy_setopt(c, CURLOPT_COPYPOSTFIELDS, offer_sdp);
 	curl_easy_setopt(c, CURLOPT_TIMEOUT, 8L);
 
 	auto cleanup = [&]() {
@@ -271,7 +306,7 @@ bool WHIPOutput::Connect()
 
 	CURLcode res = curl_easy_perform(c);
 	if (res != CURLE_OK) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
 		       "Connect failed: CURL returned result not CURLE_OK");
 		cleanup();
 		obs_output_signal_stop(output, OBS_OUTPUT_CONNECT_FAILED);
@@ -281,7 +316,7 @@ bool WHIPOutput::Connect()
 	long response_code;
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &response_code);
 	if (response_code != 201) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
 		       "Connect failed: HTTP endpoint returned response code %ld",
 		       response_code);
 		cleanup();
@@ -290,7 +325,7 @@ bool WHIPOutput::Connect()
 	}
 
 	if (read_buffer.empty()) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
 		       "Connect failed: No data returned from HTTP endpoint request");
 		cleanup();
 		obs_output_signal_stop(output, OBS_OUTPUT_CONNECT_FAILED);
@@ -298,7 +333,8 @@ bool WHIPOutput::Connect()
 	}
 
 	if (location_header.empty()) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
+
 		       "WHIP server did not provide a resource URL via the Location header");
 	} else {
 		CURLU *h = curl_url();
@@ -310,17 +346,16 @@ bool WHIPOutput::Connect()
 		if (!rc) {
 			resource_url = url;
 			curl_free(url);
-			do_log(LOG_DEBUG, "WHIP Resource URL is: %s",
+			do_log(LOG_DEBUG, output, "WHIP Resource URL is: %s",
 			       resource_url.c_str());
 		} else {
-			do_log(LOG_WARNING,
+			do_log(LOG_WARNING, output,
 			       "Unable to process resource URL response");
 		}
 		curl_url_cleanup(h);
 	}
 
-	rtc::Description answer(read_buffer, rtc::Description::Type::Answer);
-	peer_connection->setRemoteDescription(answer);
+	rtcSetRemoteDescription(peer_connection, read_buffer.c_str(), "answer");
 	cleanup();
 	return true;
 }
@@ -331,8 +366,8 @@ void WHIPOutput::StartThread()
 		return;
 
 	if (!Connect()) {
-		peer_connection->close();
-		peer_connection = nullptr;
+		rtcDeletePeerConnection(peer_connection);
+		peer_connection = -1;
 		return;
 	}
 
@@ -343,7 +378,7 @@ void WHIPOutput::StartThread()
 void WHIPOutput::SendDelete()
 {
 	if (resource_url.empty()) {
-		do_log(LOG_DEBUG,
+		do_log(LOG_DEBUG, output,
 		       "No resource URL available, not sending DELETE");
 		return;
 	}
@@ -369,7 +404,7 @@ void WHIPOutput::SendDelete()
 
 	CURLcode res = curl_easy_perform(c);
 	if (res != CURLE_OK) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
 		       "DELETE request for resource URL failed. Reason: %s",
 		       curl_easy_strerror(res));
 		cleanup();
@@ -379,14 +414,14 @@ void WHIPOutput::SendDelete()
 	long response_code;
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &response_code);
 	if (response_code != 200) {
-		do_log(LOG_WARNING,
+		do_log(LOG_WARNING, output,
 		       "DELETE request for resource URL failed. HTTP Code: %ld",
 		       response_code);
 		cleanup();
 		return;
 	}
 
-	do_log(LOG_DEBUG,
+	do_log(LOG_DEBUG, output,
 	       "Successfully performed DELETE request for resource URL");
 	cleanup();
 }
@@ -394,8 +429,8 @@ void WHIPOutput::SendDelete()
 void WHIPOutput::StopThread()
 {
 	if (peer_connection) {
-		peer_connection->close();
-		peer_connection = nullptr;
+		rtcDeletePeerConnection(peer_connection);
+		peer_connection = -1;
 	}
 
 	SendDelete();
@@ -408,43 +443,24 @@ void WHIPOutput::StopThread()
 	total_bytes_sent = 0;
 }
 
-void WHIPOutput::Send(void *data, uintptr_t size, uint64_t duration,
-		      std::shared_ptr<rtc::Track> track,
-		      std::shared_ptr<rtc::RtcpSrReporter> rtcp_sr_reporter)
+void WHIPOutput::Send(void *data, uintptr_t size, uint64_t duration, int track)
 {
-	if (!track->isOpen())
-		return;
-
-	std::vector<rtc::byte> sample{(rtc::byte *)data,
-				      (rtc::byte *)data + size};
-
-	auto rtp_config = rtcp_sr_reporter->rtpConfig;
-
 	// sample time is in us, we need to convert it to seconds
 	auto elapsed_seconds = double(duration) / (1000.0 * 1000.0);
 
 	// get elapsed time in clock rate
-	uint32_t elapsed_timestamp =
-		rtp_config->secondsToTimestamp(elapsed_seconds);
+	uint32_t elapsed_timestamp = 0;
+	rtcTransformSecondsToTimestamp(track, elapsed_seconds,
+				       &elapsed_timestamp);
 
 	// set new timestamp
-	rtp_config->timestamp = rtp_config->timestamp + elapsed_timestamp;
+	uint32_t current_timestamp = 0;
+	rtcGetCurrentTrackTimestamp(track, &current_timestamp);
+	rtcSetTrackRtpTimestamp(track, current_timestamp + elapsed_timestamp);
 
-	// get elapsed time in clock rate from last RTCP sender report
-	auto report_elapsed_timestamp =
-		rtp_config->timestamp -
-		rtcp_sr_reporter->lastReportedTimestamp();
-
-	// check if last report was at least 1 second ago
-	if (rtp_config->timestampToSeconds(report_elapsed_timestamp) > 1)
-		rtcp_sr_reporter->setNeedsToReport();
-
-	try {
-		track->send(sample);
-		total_bytes_sent += sample.size();
-	} catch (const std::exception &e) {
-		do_log(LOG_ERROR, "error: %s ", e.what());
-	}
+	total_bytes_sent += size;
+	rtcSendMessage(track, reinterpret_cast<const char *>(data),
+		       reinterpret_cast<uintptr_t>(size));
 }
 
 void register_whip_output()

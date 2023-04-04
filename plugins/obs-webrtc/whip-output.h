@@ -2,10 +2,12 @@
 
 #include <string>
 #include <atomic>
+#include <mutex>
+#include <thread>
 
 #include <obs.hpp>
 
-#include <rtc/rtc.hpp>
+#include <rtc/rtc.h>
 
 class WHIPOutput {
 public:
@@ -27,9 +29,7 @@ private:
 	void SendDelete();
 	void StopThread();
 
-	void Send(void *data, uintptr_t size, uint64_t duration,
-		  std::shared_ptr<rtc::Track> track,
-		  std::shared_ptr<rtc::RtcpSrReporter> RtcpSrReporter);
+	void Send(void *data, uintptr_t size, uint64_t duration, int track);
 
 	obs_output_t *output;
 
@@ -42,14 +42,11 @@ private:
 	std::mutex start_stop_mutex;
 	std::thread start_stop_thread;
 
-	std::unique_ptr<rtc::PeerConnection> peer_connection;
+	int peer_connection;
 	std::atomic<size_t> total_bytes_sent;
 
-	std::shared_ptr<rtc::Track> audio_track, video_track;
-	std::shared_ptr<rtc::RtcpSrReporter> audio_sr_reporter,
-		video_sr_reporter;
-	int64_t last_audio_timestamp;
-	int64_t last_video_timestamp;
+	int audio_track, video_track;
+	int64_t last_audio_timestamp, last_video_timestamp;
 };
 
 void register_whip_output();
