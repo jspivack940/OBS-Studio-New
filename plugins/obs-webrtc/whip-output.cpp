@@ -459,8 +459,7 @@ void WHIPOutput::Send(void *data, uintptr_t size, uint64_t duration, int track)
 	rtcSetTrackRtpTimestamp(track, current_timestamp + elapsed_timestamp);
 
 	total_bytes_sent += size;
-	rtcSendMessage(track, reinterpret_cast<const char *>(data),
-		       reinterpret_cast<uintptr_t>(size));
+	rtcSendMessage(track, reinterpret_cast<const char *>(data), (int) size);
 }
 
 void register_whip_output()
