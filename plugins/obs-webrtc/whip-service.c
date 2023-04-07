@@ -1,4 +1,3 @@
-#pragma once
 #include <obs-module.h>
 
 #define MAX_CODECS 3
@@ -70,13 +69,13 @@ static const char *whip_custom_url(void *data)
 
 static const char *whip_custom_get_protocol(void *data)
 {
-	struct whip_custom *service = data;
+	UNUSED_PARAMETER(data);
 	return "WHIP";
 }
 
 const char *whip_custom_get_output_type(void *data)
 {
-	struct whip_custom *service = data;
+	UNUSED_PARAMETER(data);
 	return "whip_output";
 };
 
