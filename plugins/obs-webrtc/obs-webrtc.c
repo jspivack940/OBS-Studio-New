@@ -7,13 +7,15 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-webrtc", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
 {
-	return obs_module_text("Module.Description");
+	return "WHIP output & service";
 }
+
+extern struct obs_output_info whip_output_info;
+extern struct obs_service_info whip_custom_service;
 
 bool obs_module_load()
 {
-	register_whip_output();
-	register_whip_service();
-
+	obs_register_output(&whip_output_info);
+	obs_register_service(&whip_custom_service);
 	return true;
 }

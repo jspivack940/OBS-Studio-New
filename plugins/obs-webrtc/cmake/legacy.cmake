@@ -1,6 +1,6 @@
 project(obs-webrtc)
 
-option(ENABLE_WEBRTC "Enable WebRTC Output support" OFF)
+option(ENABLE_WEBRTC "Enable WebRTC Output support" ON)
 
 if(NOT ENABLE_WEBRTC)
   obs_status(DISABLED, "obs-webrtc")
@@ -13,7 +13,7 @@ find_package(CURL REQUIRED)
 add_library(obs-webrtc MODULE)
 add_library(OBS::webrtc ALIAS obs-webrtc)
 
-target_sources(obs-webrtc PRIVATE obs-webrtc.cpp whip-output.cpp whip-output.h whip-service.cpp whip-service.h)
+target_sources(obs-webrtc PRIVATE obs-webrtc.c whip-output.c whip-output.h whip-service.c)
 
 target_link_libraries(obs-webrtc PRIVATE OBS::libobs LibDataChannel::LibDataChannel CURL::libcurl)
 
