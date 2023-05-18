@@ -4,6 +4,7 @@
 #include <libavutil/avutil.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <obs-frontend-api.h>
 
 #ifdef _WIN32
 #include <dxgi.h>
@@ -357,6 +358,8 @@ static bool hevc_vaapi_supported(void)
 #endif
 #endif
 
+extern void load_srt_stats(void);
+extern void unload_srt_stats(void);
 #ifdef _WIN32
 extern void jim_nvenc_load(bool h264, bool hevc, bool av1);
 extern void jim_nvenc_unload(void);
@@ -395,6 +398,7 @@ bool obs_module_load(void)
 	obs_register_encoder(&pcm32_encoder_info);
 	obs_register_encoder(&alac_encoder_info);
 	obs_register_encoder(&flac_encoder_info);
+	load_srt_stats();
 #ifndef __APPLE__
 	bool h264 = false;
 	bool hevc = false;
@@ -474,7 +478,7 @@ void obs_module_unload(void)
 #if ENABLE_FFMPEG_LOGGING
 	obs_ffmpeg_unload_logging();
 #endif
-
+	unload_srt_stats();
 #ifdef _WIN32
 	amf_unload();
 	jim_nvenc_unload();

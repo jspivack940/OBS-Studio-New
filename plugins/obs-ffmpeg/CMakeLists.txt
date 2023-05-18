@@ -61,6 +61,8 @@ target_link_libraries(
 if(ENABLE_NEW_MPEGTS_OUTPUT)
   find_package(Librist QUIET)
   find_package(Libsrt QUIET)
+  # Find Qt
+  find_qt(COMPONENTS Core Widgets Charts)
 
   foreach(_output_lib IN ITEMS Librist Libsrt)
     if(NOT TARGET ${_output_lib}::${_output_lib})
@@ -76,9 +78,13 @@ if(ENABLE_NEW_MPEGTS_OUTPUT)
     )
   endif()
 
-  target_sources(obs-ffmpeg PRIVATE obs-ffmpeg-mpegts.c obs-ffmpeg-srt.h obs-ffmpeg-rist.h obs-ffmpeg-url.h)
-  target_link_libraries(obs-ffmpeg PRIVATE Librist::Librist Libsrt::Libsrt)
+  target_sources(obs-ffmpeg PRIVATE obs-ffmpeg-mpegts.c obs-ffmpeg-srt.h obs-ffmpeg-rist.h obs-ffmpeg-url.h obs-ffmpeg-srt-stats.cpp  obs-ffmpeg-srt-stats.hpp)
+  target_link_libraries(obs-ffmpeg PRIVATE Librist::Librist Libsrt::Libsrt OBS::frontend-api Qt::Core Qt::Widgets Qt::Charts)
   target_compile_definitions(obs-ffmpeg PRIVATE NEW_MPEGTS_OUTPUT)
+    set_target_properties(obs-ffmpeg PROPERTIES
+             AUTOMOC ON
+             AUTOUIC ON
+             AUTORCC ON)
 endif()
 
 if(OS_WINDOWS)

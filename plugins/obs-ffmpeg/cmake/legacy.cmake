@@ -57,6 +57,7 @@ target_link_libraries(
   PRIVATE OBS::libobs
           OBS::media-playback
           OBS::opts-parser
+          OBS::frontend-api
           FFmpeg::avcodec
           FFmpeg::avfilter
           FFmpeg::avformat
@@ -66,13 +67,19 @@ target_link_libraries(
           FFmpeg::swresample)
 
 if(ENABLE_NEW_MPEGTS_OUTPUT)
-  target_sources(obs-ffmpeg PRIVATE obs-ffmpeg-mpegts.c obs-ffmpeg-srt.h obs-ffmpeg-rist.h obs-ffmpeg-url.h)
+# Find Qt
+  find_qt(COMPONENTS Core Widgets Charts)
+  target_sources(obs-ffmpeg PRIVATE obs-ffmpeg-mpegts.c obs-ffmpeg-srt.h obs-ffmpeg-rist.h obs-ffmpeg-url.h obs-ffmpeg-srt-stats.cpp obs-ffmpeg-srt-stats.hpp)
 
-  target_link_libraries(obs-ffmpeg PRIVATE Librist::Librist Libsrt::Libsrt)
+  target_link_libraries(obs-ffmpeg PRIVATE Librist::Librist Libsrt::Libsrt OBS::frontend-api Qt::Core Qt::Widgets Qt::Charts)
   if(OS_WINDOWS)
     target_link_libraries(obs-ffmpeg PRIVATE ws2_32.lib)
   endif()
   target_compile_definitions(obs-ffmpeg PRIVATE NEW_MPEGTS_OUTPUT)
+  set_target_properties(obs-ffmpeg PROPERTIES
+             AUTOMOC ON
+             AUTOUIC ON
+             AUTORCC ON)
 endif()
 
 if(ENABLE_FFMPEG_LOGGING)
