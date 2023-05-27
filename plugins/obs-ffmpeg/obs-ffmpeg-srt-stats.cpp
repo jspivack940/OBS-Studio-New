@@ -63,7 +63,7 @@ extern "C" void load_srt_stats()
 
 extern "C" void unload_srt_stats()
 {
-	//delete _statsDialog;
+	delete _statsDialog;
 }
 
 void SRTStats::OBSFrontendEvent(enum obs_frontend_event event, void *ptr)
@@ -84,20 +84,20 @@ void SRTStats::OBSFrontendEvent(enum obs_frontend_event event, void *ptr)
 	}
 }
 
-SRTStats::SRTStats(QWidget *parent) : timer(this)
+SRTStats::SRTStats(QWidget *parent)
+	: buttonBox(new QDialogButtonBox), timer(this)
 {
 	QVBoxLayout *mainLayout = new QVBoxLayout();
 	outputLayout = new QGridLayout();
 
 	/* --------------------------------------------- */
-	QDialogButtonBox *closeButton = new QDialogButtonBox();
-	closeButton->setStandardButtons(QDialogButtonBox::Close);
-	QDialogButtonBox *resetButton = new QDialogButtonBox();
-	resetButton->setStandardButtons(QDialogButtonBox::Reset);
+	;
+	buttonBox->setStandardButtons(QDialogButtonBox::Close |
+				      QDialogButtonBox::Reset);
+
 	QHBoxLayout *buttonLayout = new QHBoxLayout;
 	buttonLayout->addStretch();
-	buttonLayout->addWidget(resetButton);
-	buttonLayout->addWidget(closeButton);
+	buttonLayout->addWidget(buttonBox);
 
 	/* --------------------------------------------- */
 
@@ -156,10 +156,8 @@ SRTStats::SRTStats(QWidget *parent) : timer(this)
 	setLayout(mainLayout);
 
 	/* --------------------------------------------- */
-	connect(closeButton, &QDialogButtonBox::clicked, [this]() { Close(); });
-	connect(resetButton, &QDialogButtonBox::clicked, [this]() { Reset(); });
-
-	//	resize(800, 500);
+	connect(buttonBox, &QDialogButtonBox::clicked, this,
+		&SRTStats::DialogButtonClicked);
 
 	setWindowTitle(obs_module_text("SRT.Stats"));
 #ifdef __APPLE__
@@ -169,14 +167,8 @@ SRTStats::SRTStats(QWidget *parent) : timer(this)
 	setWindowIcon(QIcon::fromTheme("obs", QIcon(":/res/images/obs.png")));
 #endif
 
-	setWindowModality(Qt::NonModal);
-	setAttribute(Qt::WA_DeleteOnClose, true);
-
 	QObject::connect(&timer, &QTimer::timeout, this, &SRTStats::Update);
 	timer.setInterval(TIMER_INTERVAL);
-
-	if (isVisible())
-		timer.start();
 
 	obs_frontend_add_event_callback(OBSFrontendEvent, this);
 
@@ -223,8 +215,16 @@ void SRTStats::closeEvent(QCloseEvent *event)
 				  saveGeometry().toBase64().constData());
 		config_save_safe(conf, "tmp", nullptr);
 	}
-
 	QWidget::closeEvent(event);
+}
+
+void SRTStats::DialogButtonClicked(QAbstractButton *button)
+{
+	if (buttonBox->button(QDialogButtonBox::Close)) {
+		close();
+	} else if (buttonBox->button(QDialogButtonBox::Reset)) {
+		Reset();
+	}
 }
 
 void SRTStats::AddOutputLabels()
@@ -277,13 +277,6 @@ void SRTStats::Update()
 	chart->output = strOutput;
 }
 
-void SRTStats::Close()
-{
-	if (!close())
-		blog(LOG_ERROR, "shit");
-	blog(LOG_INFO, "isVisible is %i", isVisible());
-}
-
 void SRTStats::Reset()
 {
 	timer.start();
@@ -300,11 +293,6 @@ void SRTStats::Reset()
 
 void SRTStats::ToggleShowHide()
 {
-	//if (!isVisible())
-	//	setVisible(true);
-	//else
-	//	setVisible(false);
-	blog(LOG_INFO, "isVisible at toggle is %i", isVisible());
 	setVisible(!isVisible());
 }
 

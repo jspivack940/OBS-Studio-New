@@ -13,6 +13,7 @@
 #include <string>
 #include <obs.hpp>
 #include <QDialog>
+#include <QDialogButtonBox>
 
 class QGridLayout;
 class QCloseEvent;
@@ -52,7 +53,6 @@ class SRTStats : public QDialog {
 	QWidget *srtWidget = nullptr;
 	Chart *chart = nullptr;
 	QChartView *chartView = nullptr;
-
 	QTimer timer;
 	uint64_t num_bytes = 0;
 	std::vector<long double> bitrates;
@@ -95,15 +95,16 @@ class SRTStats : public QDialog {
 	virtual void closeEvent(QCloseEvent *event) override;
 	static void OBSFrontendEvent(enum obs_frontend_event event, void *ptr);
 	void Update();
+	void Reset();
 
 public:
 	SRTStats(QWidget *parent = nullptr);
 	~SRTStats();
 	void ToggleShowHide();
+	QDialogButtonBox *buttonBox = nullptr;
 
-public slots:
-	void Reset();
-	void Close();
+private Q_SLOTS:
+	void DialogButtonClicked(QAbstractButton *button);
 
 protected:
 	virtual void showEvent(QShowEvent *event) override;
