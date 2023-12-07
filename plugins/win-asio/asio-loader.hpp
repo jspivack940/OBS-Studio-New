@@ -22,7 +22,7 @@
  */
 #include <obs-module.h>
 #include <util/platform.h>
-#include "iasiodrv.h"
+#include "asio-wrapper.hpp"
 #include "byteorder.h"
 
 #define ASIOCALLBACK __cdecl
