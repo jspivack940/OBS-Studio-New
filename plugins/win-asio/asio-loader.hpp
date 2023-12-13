@@ -1255,8 +1255,9 @@ private:
 				}
 			}
 			if (obs_clients[idx] != nullptr) {
-				if (!obs_clients[idx]->stopping)
+				if (!obs_clients[idx]->stopping && obs_clients[idx]->source) {
 					obs_source_output_audio(obs_clients[idx]->source, &out);
+				}
 			}
 		}
 		// Writing silent audio : the outBuffers were calloc'd so they're silent.
