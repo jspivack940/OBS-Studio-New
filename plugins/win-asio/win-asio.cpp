@@ -17,7 +17,7 @@
  */
 
 #include "asio-loader.hpp"
-const char *PLUGIN_VERSION = "4.0.2";
+const char *PLUGIN_VERSION = "4.0.0";
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("win-asio", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
@@ -350,7 +350,8 @@ void register_asio_source()
 	asio_input_capture.get_name = asio_input_getname;
 	asio_input_capture.create = asio_input_create;
 	asio_input_capture.destroy = asio_destroy;
-	asio_input_capture.update = asio_update, asio_input_capture.get_defaults = asio_defaults;
+	asio_input_capture.update = asio_update;
+	asio_input_capture.get_defaults = asio_defaults;
 	asio_input_capture.get_properties = asio_input_properties;
 	asio_input_capture.icon_type = OBS_ICON_TYPE_AUDIO_INPUT;
 	asio_input_capture.activate = asio_activate;
