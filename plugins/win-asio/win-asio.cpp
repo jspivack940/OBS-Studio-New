@@ -372,3 +372,11 @@ void obs_module_unload()
 {
 	delete list;
 }
+
+void obs_module_post_load(void)
+{
+	if (!obs_get_module("AsioInput"))
+		return;
+
+	obs_frontend_add_event_callback(OBSEvent, nullptr);
+}

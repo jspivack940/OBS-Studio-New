@@ -13,7 +13,7 @@ configure_file(cmake/windows/obs-module.rc.in win-asio.rc)
 
 target_sources(win-asio PRIVATE win-asio.rc)
 
-target_link_libraries(win-asio PRIVATE OBS::libobs)
+target_link_libraries(win-asio PRIVATE OBS::libobs OBS::frontend-api)
 
 # cmake-format: off
 set_target_properties_obs(win-asio PROPERTIES FOLDER "plugins" PREFIX "")

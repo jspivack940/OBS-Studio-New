@@ -21,6 +21,7 @@
  * Boston, MA 02110-1301 USA.
  */
 #include <obs-module.h>
+#include <obs-frontend-api.h>
 #include <util/platform.h>
 #include "asio-wrapper.hpp"
 #include "byteorder.h"
@@ -346,6 +347,15 @@ static void asioErrorLog(String context, long error)
 	}
 
 	error("error %s - %s", context.c_str(), err);
+}
+
+std::atomic<bool> shutting_down = false;
+
+static void OBSEvent(enum obs_frontend_event event, void *)
+{
+	if (event == OBS_FRONTEND_EVENT_EXIT) {
+		shutting_down = true;
+	}
 }
 
 class ASIOAudioIODevice {
@@ -1214,7 +1224,7 @@ private:
 	void ASIOCALLBACK callback(long index)
 	{
 		if (isStarted) {
-			if (index >= 0)
+			if (index >= 0 && !shutting_down)
 				processBuffer(index);
 		} else {
 			if (postOutput && (asioObject != nullptr))
@@ -1247,19 +1257,20 @@ private:
 		out.frames = samps;
 
 		for (int idx = 0; idx < obs_clients.size(); idx++) {
-			output_channels = obs_clients[idx]->out_channels;
-			out.speakers = (enum speaker_layout)output_channels;
-			for (int j = 0; j < output_channels; j++) {
-				if (obs_clients[idx] != nullptr) {
-					if (obs_clients[idx]->route[j] >= 0 && !obs_clients[idx]->stopping)
-						out.data[j] = (uint8_t *)inBuffers[obs_clients[idx]->route[j]];
-					else
-						out.data[j] = (uint8_t *)silentBuffers;
-				}
-			}
 			if (obs_clients[idx] != nullptr) {
-				if (!obs_clients[idx]->stopping && obs_clients[idx]->source && obs_clients[idx]->active) {
-					obs_source_output_audio(obs_clients[idx]->source, &out);
+				if (obs_clients[idx]->device) {
+					output_channels = obs_clients[idx]->out_channels;
+					out.speakers = (enum speaker_layout)output_channels;
+					for (int j = 0; j < output_channels; j++) {
+						if (obs_clients[idx]->route[j] >= 0 && !obs_clients[idx]->stopping)
+							out.data[j] = (uint8_t *)inBuffers[obs_clients[idx]->route[j]];
+						else
+							out.data[j] = (uint8_t *)silentBuffers;
+					}
+					if (!obs_clients[idx]->stopping && obs_clients[idx]->source &&
+					    obs_clients[idx]->active) {
+						obs_source_output_audio(obs_clients[idx]->source, &out);
+					}
 				}
 			}
 		}
