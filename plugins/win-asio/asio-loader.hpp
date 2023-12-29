@@ -350,7 +350,7 @@ static void asioErrorLog(String context, long error)
 	error("error %s - %s", context.c_str(), err);
 }
 
-os_sem_t *shutting_down;
+os_event_t *shutting_down;
 std::atomic<bool> shutting_down_atomic = false;
 
 static void OBSEvent(enum obs_frontend_event event, void *)
@@ -1230,7 +1230,7 @@ private:
 				if(!shutting_down_atomic)
 					processBuffer(index);
 				else
-					os_sem_post(shutting_down);
+					os_event_signal(shutting_down);
 		} else {
 			if (postOutput && (asioObject != nullptr))
 				asioObject->outputReady();

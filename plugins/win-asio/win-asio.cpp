@@ -143,14 +143,13 @@ static void asio_destroy(void *vptr)
 
 	if (!data)
 		return;
-	os_sem_wait(shutting_down);
-	{
-		/* delete the asio source from clients of asio device */
-		if (data->device)
-			bfree((void *)data->device);
-		remove_client(data);
-		bfree(data);
-	}
+	os_event_timedwait(shutting_down, 1000);
+	;
+	/* delete the asio source from clients of asio device */
+	if (data->device)
+		bfree((void *)data->device);
+	remove_client(data);
+	bfree(data);
 }
 
 static bool fill_out_channels_modified(void *vptr, obs_properties_t *props, obs_property_t *chanlist,
@@ -367,7 +366,7 @@ bool obs_module_load(void)
 	list->scanForDevices();
 	register_asio_source();
 	info("plugin loaded successfully (version %s)", PLUGIN_VERSION);
-	if (os_sem_init(&shutting_down, 0) != 0)
+	if (os_event_init(&shutting_down, OS_EVENT_TYPE_AUTO))
 		return false;
 
 	return true;
@@ -376,7 +375,7 @@ bool obs_module_load(void)
 void obs_module_unload()
 {
 	delete list;
-	os_sem_destroy(shutting_down);
+	os_event_destroy(shutting_down);
 }
 
 void obs_module_post_load(void)
