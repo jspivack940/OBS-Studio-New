@@ -28,11 +28,14 @@
 #include <util/threading.h>
 
 #define ASIOCALLBACK __cdecl
-#define ASIO_LOG(level, format, ...) blog(level, "[asio source]: " format, ##__VA_ARGS__)
+#define ASIO_LOG(level, format, ...) \
+	blog(level, "[asio device '%s']: " format, this->getName().c_str(), ##__VA_ARGS__)
+#define ASIO_LOG2(level, format, ...) blog(level, "[asio_device_list]: " format, ##__VA_ARGS__)
 #define debug(format, ...) ASIO_LOG(LOG_DEBUG, format, ##__VA_ARGS__)
 #define warn(format, ...) ASIO_LOG(LOG_WARNING, format, ##__VA_ARGS__)
 #define info(format, ...) ASIO_LOG(LOG_INFO, format, ##__VA_ARGS__)
-#define error(format, ...) ASIO_LOG(LOG_ERROR, format, ##__VA_ARGS__)
+#define info2(format, ...) ASIO_LOG2(LOG_INFO, format, ##__VA_ARGS__)
+#define error(format, ...) ASIO_LOG2(LOG_ERROR, format, ##__VA_ARGS__)
 
 #define String std::string
 
@@ -440,6 +443,24 @@ public:
 	int getDefaultBufferSize() { return preferredBufferSize; }
 
 	int getXRunCount() const noexcept { return xruns; }
+	String get_sample_format(int type)
+	{
+		String message = "24 bit int";
+		switch (type)
+		{
+		case 17:
+			break;
+		case 18:
+			message = "32 bit int";
+			break;
+		case 19:
+			message = "32 bit float";
+			break;
+		default:
+			message = "uncommon format number " + std::to_string(type);
+		}
+		return message;
+	}
 
 	String open(double sr, int bufferSizeSamples)
 	{
@@ -527,7 +548,7 @@ public:
 		info("disposing buffers");
 		err = asioObject->disposeBuffers();
 
-		info("creating buffers: %i, size: %i", totalBuffers, currentBlockSizeSamples);
+		info("creating buffers: %i in-out channels, size: %i samples", totalBuffers, currentBlockSizeSamples);
 		err = asioObject->createBuffers(bufferInfos, totalBuffers, currentBlockSizeSamples, &callbacks);
 
 		if (err != ASE_OK) {
@@ -569,8 +590,8 @@ public:
 				currentBitDepth = max(currentBitDepth, outputFormat[n].bitDepth);
 			}
 
-			info("input sample format: %i, output sample format: %i\n (19 == 32 bit float, 17 == 24 bit int, 18 == 32 bit int)",
-			     types[0], types[1]);
+			info("input sample format: %s, output sample format: %s\n ",
+			     get_sample_format(types[0]).c_str(), get_sample_format(types[1]).c_str());
 
 			for (int i = 0; i < totalNumOutputChans; ++i) {
 				//outputFormat[i].clear(bufferInfos[totalNumInputChans + i].buffers[0],
@@ -659,7 +680,7 @@ public:
 	}
 
 	bool isOpen() { return deviceIsOpen || insideControlPanelModalLoop; }
-	bool isPlaying() { return asioObject != nullptr; } // add a bool later to get the info when streaming
+	bool isPlaying() { return asioObject != nullptr && current_nb_clients != 0; };
 
 	int getCurrentBufferSizeSamples() { return currentBlockSizeSamples; }
 	double getCurrentSampleRate() { return currentSampleRate; }
@@ -667,7 +688,46 @@ public:
 
 	int getOutputLatencyInSamples() { return outputLatency; }
 	int getInputLatencyInSamples() { return inputLatency; }
+	int readBufferSizes(int bufferSizeSamples)
+	{
+		minBufferSize = 0;
+		maxBufferSize = 0;
+		bufferGranularity = 0;
+		long newPreferredSize = 0;
 
+		if (asioObject->getBufferSize(&minBufferSize, &maxBufferSize, &newPreferredSize, &bufferGranularity) ==
+		    ASE_OK) {
+			if (preferredBufferSize != 0 && newPreferredSize != 0 &&
+			    newPreferredSize != preferredBufferSize)
+				shouldUsePreferredSize = true;
+
+			if (bufferSizeSamples < minBufferSize || bufferSizeSamples > maxBufferSize)
+				shouldUsePreferredSize = true;
+
+			preferredBufferSize = newPreferredSize;
+		}
+
+		// unfortunate workaround for certain drivers which crash if you make
+		// dynamic changes to the buffer size...
+		bool isDigidesign = strstr(deviceName.c_str(), "Digidesign") != NULL;
+		shouldUsePreferredSize = shouldUsePreferredSize || isDigidesign;
+
+		if (shouldUsePreferredSize) {
+			info("Using preferred size for buffer..");
+			auto err = refreshBufferSizes();
+
+			if (err == ASE_OK) {
+				bufferSizeSamples = (int)preferredBufferSize;
+			} else {
+				bufferSizeSamples = 1024;
+				asioErrorLog("getBufferSize1", err);
+			}
+
+			shouldUsePreferredSize = false;
+		}
+
+		return bufferSizeSamples;
+	}
 	String getLastError() { return errorstring; }
 	bool hasControlPanel() { return true; }
 
@@ -813,46 +873,7 @@ private:
 		return err;
 	}
 
-	int readBufferSizes(int bufferSizeSamples)
-	{
-		minBufferSize = 0;
-		maxBufferSize = 0;
-		bufferGranularity = 0;
-		long newPreferredSize = 0;
 
-		if (asioObject->getBufferSize(&minBufferSize, &maxBufferSize, &newPreferredSize, &bufferGranularity) ==
-		    ASE_OK) {
-			if (preferredBufferSize != 0 && newPreferredSize != 0 &&
-			    newPreferredSize != preferredBufferSize)
-				shouldUsePreferredSize = true;
-
-			if (bufferSizeSamples < minBufferSize || bufferSizeSamples > maxBufferSize)
-				shouldUsePreferredSize = true;
-
-			preferredBufferSize = newPreferredSize;
-		}
-
-		// unfortunate workaround for certain drivers which crash if you make
-		// dynamic changes to the buffer size...
-		bool isDigidesign = strstr(deviceName.c_str(), "Digidesign") != NULL;
-		shouldUsePreferredSize = shouldUsePreferredSize || isDigidesign;
-
-		if (shouldUsePreferredSize) {
-			info("Using preferred size for buffer..");
-			auto err = refreshBufferSizes();
-
-			if (err == ASE_OK) {
-				bufferSizeSamples = (int)preferredBufferSize;
-			} else {
-				bufferSizeSamples = 1024;
-				asioErrorLog("getBufferSize1", err);
-			}
-
-			shouldUsePreferredSize = false;
-		}
-
-		return bufferSizeSamples;
-	}
 
 	void resetBuffers()
 	{
@@ -872,7 +893,7 @@ private:
 	void addBufferSizes(long minSize, long maxSize, long preferredSize, long granularity)
 	{
 		// find a list of buffer sizes..
-		info("%i -> %i, preferred: %i, step: %i", minSize, maxSize, preferredSize, granularity);
+		info("Available buffer sizes: %i -> %i, preferred: %i, step: %i", minSize, maxSize, preferredSize, granularity);
 
 		if (granularity >= 0) {
 			granularity = max(16, (int)granularity);
@@ -964,7 +985,7 @@ private:
 		if (asioObject->getLatencies(&inputLatency, &outputLatency) != 0)
 			info("getLatencies() failed");
 		else
-			info("Latencies: in = %i, out = %i", (int)inputLatency, (int)outputLatency);
+			info("Latencies (samples): in = %i, out = %i", (int)inputLatency, (int)outputLatency);
 	}
 
 	void createDummyBuffers(long preferredSize)
@@ -1135,7 +1156,7 @@ private:
 
 				if (asioObject != nullptr &&
 				    (err = asioObject->getChannels(&totalNumInputChans, &totalNumOutputChans)) == 0) {
-					info(" channels in: %i, channels out: %i", totalNumInputChans,
+					info("channels in: %i, channels out: %i", totalNumInputChans,
 					     totalNumOutputChans);
 					if (totalNumInputChans > 32 || totalNumOutputChans > 32)
 						info("Only up to 32 input + 32 output channels are enabled. Higher channel counts are disabled.");
@@ -1457,7 +1478,7 @@ public:
 		LONG err;
 		TCHAR name[256], value[256], value2[256];
 
-		info("Querying installed ASIO drivers.\n");
+		info2("Querying installed ASIO drivers.\n");
 
 		if (!SUCCEEDED(err = RegOpenKeyEx(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\ASIO"), 0, KEY_READ, &asio))) {
 
@@ -1504,12 +1525,12 @@ public:
 				driver.name = TCHARToUTF8(value2);
 			}
 
-			info("Found ASIO driver: %s with CLSID %s\n", driver.name.c_str(), driver.clsid.c_str());
+			info2("Found ASIO driver: %s with CLSID %s\n", driver.name.c_str(), driver.clsid.c_str());
 			drivers.push_back(driver);
 			deviceNames.push_back(driver.name);
 		}
 
-		info("ASIO Info: Done querying ASIO drivers.");
+		info2("ASIO Info: Done querying ASIO drivers.");
 
 		RegCloseKey(asio);
 	}

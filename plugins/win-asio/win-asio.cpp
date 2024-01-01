@@ -48,12 +48,20 @@ static void attach_device(void *vptr, obs_data_t *settings)
 			} else {
 				data->device_index = i;
 				// increment the device client list if the source was never a client
-				// & source ptr added as a client of asio device.
-				//if (data->asio_client_index[i] < 0) {
+				// & add source ptr as a client of asio device.
 				data->asio_client_index[i] = (int)data->asio_device->obs_clients.size();
 				data->asio_device->obs_clients.push_back(data);
 				data->asio_device->current_nb_clients++;
-				//}
+				// log some info about the device
+				blog(LOG_INFO,
+				     "[asio_source '%s']:\nsource added to device %s;\n\tcurrent sample rate: %i,"
+				     "\n\tcurrent buffer: %i,"
+				     "\n\tinput latency: %f ms\n",
+				     obs_source_get_name(data->source), name.c_str(),
+				     (int)data->asio_device->getCurrentSampleRate(),
+				     data->asio_device->readBufferSizes(0),
+				     1000.0f * (float)data->asio_device->getInputLatencyInSamples() /
+					     data->asio_device->getCurrentSampleRate());
 			}
 			break;
 		}
@@ -67,8 +75,13 @@ static void detach_device(void *vptr, std::string name)
 	int prev_client_idx = data->asio_client_index[prev_dev_idx];
 	data->asio_device->obs_clients[prev_client_idx] = nullptr;
 	data->asio_device->current_nb_clients--;
-	if (data->asio_device->current_nb_clients == 0)
+	if (data->asio_device->current_nb_clients == 0) {
+		blog(LOG_INFO,
+		     "[asio_source '%s']: \n\tDevice % s removed;\n"
+		     "\tnumber of xruns: % i;\n\tincrease your buffer if you get a high count & hear cracks, pops or else !\n ",
+		     obs_source_get_name(data->source), name.c_str(), data->asio_device->getXRunCount());
 		data->asio_device->close();
+	}
 }
 
 static void asio_update(void *vptr, obs_data_t *settings)
@@ -86,9 +99,9 @@ static void asio_update(void *vptr, obs_data_t *settings)
 	if (!data->device && new_device)
 		data->device = bstrdup(new_device);
 
-	if (!data->asio_device)
+	if (!data->asio_device) {
 		attach_device(data, settings);
-	else if (strcmp(data->asio_device->getName().c_str(), new_device) != 0) {
+	} else if (strcmp(data->asio_device->getName().c_str(), new_device) != 0) {
 		detach_device(data, data->asio_device->getName());
 		attach_device(data, settings);
 		swapping_device = true;
@@ -125,6 +138,7 @@ static void *asio_input_create(obs_data_t *settings, obs_source_t *source)
 		data->route[i] = -1;
 	}
 	asio_update(data, settings);
+	blog(LOG_INFO, "[asio_source '%s']: created successfully.", obs_source_get_name(data->source));
 	return data;
 }
 
@@ -212,7 +226,6 @@ static bool asio_device_changed(void *vptr, obs_properties_t *props, obs_propert
 			obs_property_set_modified_callback2(route[i], fill_out_channels_modified, data);
 			fill_out_channels_modified(data, props, route[i], settings);
 			obs_property_set_visible(route[i], i < output_channels);
-
 		}
 	}
 
@@ -332,12 +345,14 @@ static void asio_defaults(obs_data_t *settings)
 	}
 }
 
-static void asio_activate(void *vptr) {
+static void asio_activate(void *vptr)
+{
 	struct asio_data *data = (struct asio_data *)vptr;
 	data->active = true;
 }
 
-static void asio_deactivate(void *vptr) {
+static void asio_deactivate(void *vptr)
+{
 	struct asio_data *data = (struct asio_data *)vptr;
 	data->active = false;
 }
@@ -365,7 +380,7 @@ bool obs_module_load(void)
 	list = new ASIOAudioIODeviceList();
 	list->scanForDevices();
 	register_asio_source();
-	info("plugin loaded successfully (version %s)", PLUGIN_VERSION);
+	blog(LOG_INFO, "ASIO plugin loaded successfully (version %s)", PLUGIN_VERSION);
 	if (os_event_init(&shutting_down, OS_EVENT_TYPE_AUTO))
 		return false;
 
