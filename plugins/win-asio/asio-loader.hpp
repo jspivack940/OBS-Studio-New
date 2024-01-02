@@ -23,7 +23,7 @@
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <util/platform.h>
-#include "asio-wrapper.hpp"
+#include "iasiodrv.h"
 #include "byteorder.h"
 #include <util/threading.h>
 
