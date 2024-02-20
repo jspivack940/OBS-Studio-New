@@ -476,7 +476,7 @@ static void asio_output_update(void *vptr, obs_data_t *settings) {
     }
     data->asio_device->obs_track[i] = -1;         // device does not use track i
     data->asio_device->obs_track_channel[i] = -1; // device does not use any channel from track i
-    for (int j = 0; j < MAX_AUDIO_MIXES; j++) {
+    for (int j = 0; j < MAX_AUDIO_MIXES_NEW; j++) {
       for (int k = 0; k < data->obs_track_channels; k++) {
         if (data->out_route[i] >= 0 && data->out_route[i] & (1ULL << (j + 4))) {
           if (k == (data->out_route[i] - (1ULL << (j + 4)))) {
@@ -595,10 +595,11 @@ static bool asio_output_device_changed(obs_properties_t *props, obs_property_t *
       std::string name = "device_ch" + std::to_string(i);
       device_channel[i] = obs_properties_add_list(props, name.c_str(), output_ch_names[i].c_str(), OBS_COMBO_TYPE_LIST,
                                                   OBS_COMBO_FORMAT_INT);
+      obs_property_set_long_description(device_channel[i], obs_module_text("ASIO.output.hint"));
       obs_property_set_visible(device_channel[i], i < output_channels_device);
       obs_property_list_add_int(device_channel[i], obs_module_text("Mute"), -1);
       obs_property_set_modified_callback(device_channel[i], asio_output_update_cb);
-      for (size_t j = 0; j < MAX_AUDIO_MIXES; j++) {
+      for (size_t j = 0; j < MAX_AUDIO_MIXES_NEW; j++) {
         for (size_t k = 0; k < obs_output_channels_count; k++) {
           // We store track and track channel in the following way:
           // 3 bits are reserved for the track channel (0-7);
@@ -639,7 +640,7 @@ static void *asio_output_create(obs_data_t *settings, obs_output_t *output) {
   struct asio_data *data = (struct asio_data *)bzalloc(sizeof(struct asio_data));
   data->output = output;
   // allow all tracks for asio output including track 7 (aka asio monitoring)
-  obs_output_set_mixers(data->output, (1 << 5) + (1 << 4) + (1 << 3) + (1 << 2) + (1 << 1) + (1 << 0));
+  obs_output_set_mixers(data->output, (1 << 6) + (1 << 5) + (1 << 4) + (1 << 3) + (1 << 2) + (1 << 1) + (1 << 0));
   data->asio_device = nullptr;
   data->source = nullptr;
   data->device = nullptr;
@@ -705,6 +706,9 @@ static obs_properties_t *asio_output_properties(void *vptr) {
 
   panel = obs_properties_add_button2(props, "ctrl", obs_module_text("Control Panel"), show_panel_output, vptr);
   obs_property_set_modified_callback(devices, asio_output_device_changed);
+  obs_property_t *warning = obs_properties_add_text(props, "hint", NULL, OBS_TEXT_INFO);
+  obs_property_text_set_info_type(warning, OBS_TEXT_INFO_WARNING);
+  obs_property_set_long_description(warning, obs_module_text("ASIO.output.hint"));
   return props;
 }
 void register_asio_output() {
