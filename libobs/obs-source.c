@@ -138,10 +138,10 @@ const char *obs_source_get_display_name(const char *id)
 static void allocate_audio_output_buffer(struct obs_source *source)
 {
 	size_t size = sizeof(float) * AUDIO_OUTPUT_FRAMES * MAX_AUDIO_CHANNELS *
-		      MAX_AUDIO_MIXES;
+		      MAX_AUDIO_MIXES_NEW;
 	float *ptr = bzalloc(size);
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		size_t mix_pos = mix * AUDIO_OUTPUT_FRAMES * MAX_AUDIO_CHANNELS;
 
 		for (size_t i = 0; i < MAX_AUDIO_CHANNELS; i++) {
@@ -5586,7 +5586,7 @@ static void apply_audio_actions(obs_source_t *source, size_t channels,
 
 	pthread_mutex_unlock(&source->audio_actions_mutex);
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		if ((source->audio_mixers & (1 << mix)) != 0)
 			multiply_vol_data(source, mix, channels, vol_data);
 	}
@@ -5624,11 +5624,11 @@ static void apply_audio_volume(obs_source_t *source, uint32_t mixers,
 	if (vol == 0.0f || mixers == 0) {
 		memset(source->audio_output_buf[0][0], 0,
 		       AUDIO_OUTPUT_FRAMES * sizeof(float) *
-			       MAX_AUDIO_CHANNELS * MAX_AUDIO_MIXES);
+			       MAX_AUDIO_CHANNELS * MAX_AUDIO_MIXES_NEW);
 		return;
 	}
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		uint32_t mix_and_val = (1 << mix);
 		if ((source->audio_mixers & mix_and_val) != 0 &&
 		    (mixers & mix_and_val) != 0)
@@ -5643,7 +5643,7 @@ static void custom_audio_render(obs_source_t *source, uint32_t mixers,
 	bool success;
 	uint64_t ts;
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		for (size_t ch = 0; ch < channels; ch++) {
 			audio_data.output[mix].data[ch] =
 				source->audio_output_buf[mix][ch];
@@ -5664,7 +5664,7 @@ static void custom_audio_render(obs_source_t *source, uint32_t mixers,
 	if (!success || !source->audio_ts || !mixers)
 		return;
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		uint32_t mix_bit = 1 << mix;
 
 		if ((mixers & mix_bit) == 0)
@@ -5732,7 +5732,7 @@ static inline void process_audio_source_tick(obs_source_t *source,
 
 	pthread_mutex_unlock(&source->audio_buf_mutex);
 
-	for (size_t mix = 1; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 1; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		uint32_t mix_and_val = (1 << mix);
 
 		if (audio_submix) {
@@ -5821,7 +5821,7 @@ void obs_source_get_audio_mix(const obs_source_t *source,
 	if (!obs_ptr_valid(audio, "audio"))
 		return;
 
-	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+	for (size_t mix = 0; mix < MAX_AUDIO_MIXES_NEW; mix++) {
 		for (size_t ch = 0; ch < MAX_AUDIO_CHANNELS; ch++) {
 			audio->output[mix].data[ch] =
 				source->audio_output_buf[mix][ch];
@@ -5916,11 +5916,32 @@ void obs_source_set_monitoring_type(obs_source_t *source,
 	}
 
 	source->monitoring_type = type;
+
+#ifdef _WIN32
+	// On windows, assign to the extra asio monitoring track (track 7) all sources which have type
+	// OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT.
+	if (type == OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT) {
+		source->audio_mixers |= 1 << (MAX_AUDIO_MIXES_NEW - 1);
+	} else {
+		source->audio_mixers &= ~(1 << (MAX_AUDIO_MIXES_NEW - 1));
+	}
+#endif
 }
 
 enum obs_monitoring_type
-obs_source_get_monitoring_type(const obs_source_t *source)
+obs_source_get_monitoring_type(obs_source_t *source)
 {
+#ifdef _WIN32
+	// If type is not OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT, unselect
+	// the extra asio monitoring track (track 7) on windows.
+	uint32_t mixers = obs_source_get_audio_mixers(source);
+	if (source->monitoring_type != OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT && mixers) {
+		if (mixers & 1 << (MAX_AUDIO_MIXES_NEW - 1)) {
+			mixers &= ~(1 << (MAX_AUDIO_MIXES_NEW - 1));
+			obs_source_set_audio_mixers(source, mixers);
+		}
+	}
+#endif
 	return obs_source_valid(source, "obs_source_get_monitoring_type")
 		       ? source->monitoring_type
 		       : OBS_MONITORING_TYPE_NONE;
